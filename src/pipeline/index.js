@@ -1,0 +1,56 @@
+import { UserError } from "../lib/errors.js";
+import { encodeRepo } from "../lib/github.js";
+import { scanRepository } from "./scan.js";
+import { selectFiles } from "./select.js";
+import { readFiles } from "./read.js";
+import { generateChanges } from "./generate.js";
+import { publishChanges } from "./publish.js";
+
+// خط المعالجة: فحص ← اختيار ← قراءة ← توليد ← نشر.
+export async function runPipeline(env, input, io) {
+  const { repo, task, history } = input;
+  const encodedRepo = encodeRepo(repo);
+  const stage = (name, message) => io.emit({ type: "stage", stage: name, message });
+
+  stage("scan", "جارٍ فحص بنية المستودع…");
+  const scan = await scanRepository(env, repo, encodedRepo);
+
+  stage("select", "جارٍ اختيار الملفات المناسبة…");
+  const chosen = await selectFiles(env, { task, history, scan });
+
+  stage("read", "جارٍ قراءة " + chosen.length + " ملف…");
+  const files = await readFiles(env, encodedRepo, chosen);
+
+  stage("generate", "جارٍ تحليل الطلب وتوليد النتيجة…");
+  const outcome = await generateChanges(env, { task, history, files });
+
+  if (!outcome.changed.length) {
+    return {
+      ok: true,
+      noChanges: true,
+      summary: outcome.summary || "لم يتطلب الطلب أي تعديل على الملفات.",
+      files: []
+    };
+  }
+
+  if (!io.alive()) {
+    throw new UserError("انقطع اتصال المتصفح قبل إنشاء الفرع، لذلك لم يُنشأ شيء. أعد المحاولة.");
+  }
+
+  stage("publish", "جارٍ إنشاء الفرع وPull Request…");
+  const published = await publishChanges(env, {
+    encodedRepo,
+    scan,
+    summary: outcome.summary,
+    changed: outcome.changed
+  });
+
+  return {
+    ok: true,
+    noChanges: false,
+    summary: outcome.summary || published.oneLine,
+    branch: published.branch,
+    files: outcome.changed.map(file => file.path),
+    url: published.url
+  };
+}

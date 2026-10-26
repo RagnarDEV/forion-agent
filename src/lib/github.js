@@ -1,0 +1,85 @@
+import { GITHUB_API } from "../config.js";
+import { UserError } from "./errors.js";
+import { cleanSecret } from "./security.js";
+
+export const encodeRepo = repo => repo.split("/").map(encodeURIComponent).join("/");
+
+export async function github(env, path, options = {}) {
+  const response = await fetch(GITHUB_API + path, {
+    ...options,
+    headers: {
+      "Authorization": "Bearer " + cleanSecret(env.GITHUB_TOKEN),
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      // GitHub يرفض (403) أي طلب بلا User-Agent.
+      "User-Agent": "forion-agent",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {})
+    }
+  });
+
+  const raw = await response.text();
+  let data = {};
+  try { data = raw ? JSON.parse(raw) : {}; } catch {}
+
+  if (!response.ok) {
+    const detail = (data && data.message) ||
+      raw.replace(/\s+/g, " ").trim().slice(0, 200) ||
+      "طلب GitHub فشل";
+    const error = new Error("GitHub (" + response.status + "): " + detail);
+    error.fromGitHub = true;
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
+}
+
+export async function listRepos(env) {
+  const all = [];
+
+  for (let page = 1; page <= 10; page++) {
+    const batch = await github(env,
+      "/user/repos?per_page=100&page=" + page +
+      "&sort=updated&direction=desc&affiliation=owner,collaborator,organization_member");
+
+    if (!Array.isArray(batch)) {
+      throw new UserError("استجابة قائمة المستودعات غير صالحة.");
+    }
+
+    all.push(...batch);
+    if (batch.length < 100) break;
+  }
+
+  return all
+    .filter(repo => repo && repo.full_name && repo.permissions &&
+      (repo.permissions.push || repo.permissions.admin))
+    .map(repo => ({
+      full_name: repo.full_name,
+      private: Boolean(repo.private),
+      default_branch: repo.default_branch
+    }));
+}
+
+export async function getTree(env, repo, branch) {
+  const encodedRepo = encodeRepo(repo);
+  const ref = await github(env, "/repos/" + encodedRepo +
+    "/git/ref/heads/" + encodeURIComponent(branch));
+  const commit = await github(env, "/repos/" + encodedRepo +
+    "/git/commits/" + ref.object.sha);
+  const tree = await github(env, "/repos/" + encodedRepo +
+    "/git/trees/" + commit.tree.sha + "?recursive=1");
+
+  if (tree.truncated) {
+    throw new UserError(
+      "المستودع كبير جدًا: أعاد GitHub شجرة غير مكتملة، ولا يمكن ضمان تعديل آمن عليه."
+    );
+  }
+
+  return {
+    refSha: ref.object.sha,
+    commitSha: commit.sha,
+    treeSha: commit.tree.sha,
+    tree
+  };
+}
