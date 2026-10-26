@@ -57,9 +57,10 @@ a{color:#9abaff;overflow-wrap:anywhere}
 <button id="run">تحليل المشروع وتنفيذ المهمة</button>
 <button id="refresh" class="secondary">تحديث قائمة المستودعات</button>
 <button id="logout" class="secondary">إنهاء الجلسة</button>
-<div id="status" class="status" hidden></div>
 <div id="result" hidden></div>
 </section>
+
+<div id="status" class="status" role="status" hidden></div>
 </main>
 
 <script>
@@ -101,7 +102,10 @@ async function loadRepos() {
 }
 $("connect").onclick = async () => {
   adminToken = $("token").value.trim();
-  if (!adminToken) return alert("أدخل رمز الإدارة");
+  if (!adminToken) {
+    showStatus("أدخل رمز الإدارة أولًا.");
+    return;
+  }
   $("connect").disabled = true;
   try {
     await loadRepos();
