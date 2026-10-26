@@ -1,3 +1,4 @@
+
 import { UserError } from "../lib/errors.js";
 import { encodeRepo } from "../lib/github.js";
 import { scanRepository } from "./scan.js";
@@ -10,7 +11,9 @@ import { publishChanges } from "./publish.js";
 export async function runPipeline(env, input, io) {
   const { repo, task, history } = input;
   const encodedRepo = encodeRepo(repo);
-  const stage = (name, message) => io.emit({ type: "stage", stage: name, message });
+
+  const stage = (name, message) =>
+    io.emit({ type: "stage", stage: name, message });
 
   stage("scan", "جارٍ فحص بنية المستودع…");
   const scan = await scanRepository(env, repo, encodedRepo);
@@ -21,8 +24,20 @@ export async function runPipeline(env, input, io) {
   stage("read", "جارٍ قراءة " + chosen.length + " ملف…");
   const files = await readFiles(env, encodedRepo, chosen);
 
+  // جمع مسارات الملفات الموجودة فعلًا في المستودع.
+  // هذا يمنع التعامل مع ملف موجود لم تتم قراءته كأنه ملف جديد.
+  const existingPaths = (scan.snapshot.tree.tree || [])
+    .filter(item => item.type === "blob")
+    .map(item => item.path);
+
   stage("generate", "جارٍ تحليل الطلب وتوليد النتيجة…");
-  const outcome = await generateChanges(env, { task, history, files });
+
+  const outcome = await generateChanges(env, {
+    task,
+    history,
+    files,
+    existingPaths
+  });
 
   if (!outcome.changed.length) {
     return {
@@ -34,10 +49,13 @@ export async function runPipeline(env, input, io) {
   }
 
   if (!io.alive()) {
-    throw new UserError("انقطع اتصال المتصفح قبل إنشاء الفرع، لذلك لم يُنشأ شيء. أعد المحاولة.");
+    throw new UserError(
+      "انقطع اتصال المتصفح قبل إنشاء الفرع، لذلك لم يُنشأ شيء. أعد المحاولة."
+    );
   }
 
   stage("publish", "جارٍ إنشاء الفرع وPull Request…");
+
   const published = await publishChanges(env, {
     encodedRepo,
     scan,
