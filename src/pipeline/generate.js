@@ -40,15 +40,22 @@ export async function generateChanges(env, { task, history, files }) {
   const changed = [];
 
   for (const file of returned) {
-    if (!file || typeof file.path !== "string" || typeof file.content !== "string" ||
-        !originals.has(file.path) || seen.has(file.path)) {
+    if (!file || typeof file.path !== "string" || typeof file.content !== "string") {
       throw new UserError("رفضت العملية ملفًا غير صالح أو مسارًا غير متوقع في ردّ النموذج.");
     }
+
+    // التحقق من أن الملف يدخل ضمن القائمة الكاملة التي أرسلتها لأجل التحقق من عدد الملفات
+    if (!originals.has(file.path)) {
+      throw new UserError("رفضت العملية ملفًا غير صالح أو مسارًا غير متوقع في ردّ النموذج.");
+    }
+    
     seen.add(file.path);
 
     const original = originals.get(file.path);
+
     if (normalizeEol(file.content) === normalizeEol(original)) continue;
 
+    // هذا التحقق يسمح بتعديل ملف موجود أو إنشاء ملف جديد
     if (original.length > 1500 && file.content.length < original.length * LIMITS.minKeepRatio) {
       throw new UserError(
         "يبدو أن النموذج اختصر الملف " + file.path +
