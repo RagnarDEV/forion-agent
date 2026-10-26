@@ -206,6 +206,8 @@ async function github(env, path, options = {}) {
       "Authorization": "Bearer " + cleanSecret(env.GITHUB_TOKEN),
       "Accept": "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
+      // GitHub يرفض (403) أي طلب بلا User-Agent.
+      "User-Agent": "forion-agent",
       ...(options.body ? {"Content-Type":"application/json"} : {}),
       ...(options.headers || {})
     }
@@ -216,8 +218,11 @@ async function github(env, path, options = {}) {
   try { data = raw ? JSON.parse(raw) : {}; } catch {}
 
   if (!response.ok) {
-    const message = data.message || "طلب GitHub فشل";
-    const err = new Error("GitHub (" + response.status + "): " + message);
+    // إن لم يكن الرد JSON نعرض بداية النص الخام بدل رسالة عامة.
+    const detail = (data && data.message) ||
+      raw.replace(/\s+/g, " ").trim().slice(0, 200) ||
+      "طلب GitHub فشل";
+    const err = new Error("GitHub (" + response.status + "): " + detail);
     err.fromGitHub = true;
     throw err;
   }
