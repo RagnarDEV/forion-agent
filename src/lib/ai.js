@@ -1,64 +1,68 @@
+
 import { DEFAULT_MODEL } from "../config.js";
 import { UserError } from "./errors.js";
 import { cleanSecret } from "./security.js";
 
-export const MIN_CHARS_FOR_AUTO_FIX = 1000; // عدد الأحرف الأدنى عند فشل التحليل يدويًا لتفعيل الاستراتيجية التلقائية
-
-function findPossibleJson(text) {
-  // استراتيجية هجومية لاكتشاف JSON محتمل داخل نص عشوائي
-  const tokens = text.split(/([^{]+)\{([^}]+\{?[^}]*\}?\s*)\}/);  
-  if (tokens.length === 5 && tokens[2].match(/{/)) return tokens[2] + tokens[3];
-  return null;
-}
-
 export function withTimeout(promise, ms, label) {
   let timer;
+
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new UserError(
-      "انتهت مهلة " + label + " (" + Math.round(ms / 1000) +
-      " ثانية). قلّل نطاق الطلب أو حدّد الملفات المطلوبة بالاسم ثم أعد المحاولة."
-    )), ms);
+    timer = setTimeout(() => {
+      reject(
+        new UserError(
+          "انتهت مهلة " +
+            label +
+            " (" +
+            Math.round(ms / 1000) +
+            " ثانية). أعد المحاولة."
+        )
+      );
+    }, ms);
   });
 
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  return Promise.race([promise, timeout]).finally(() => {
+    clearTimeout(timer);
+  });
 }
 
-export function parseModelJSON(text, what) {
-  let cleaned = String(text).trim()
-    .replace(/^```:?(json)?\s*/i, "")
-    .replace(/\s*```:?$/, "");
+/**
+ * يحلل JSON كاملًا فقط.
+ * لا يحاول ترميم الرد المقطوع ولا استخراج جزء عشوائي منه.
+ */
+export function parseModelJSON(text, what = "التوليد") {
+  if (typeof text !== "string" || !text.trim()) {
+    throw new UserError(
+      "استجابة النموذج (" + what + ") فارغة أو ليست نصًا صالحًا."
+    );
+  }
 
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start >= 0 && end > start) cleaned = cleaned.slice(start, end + 1);
+  let cleaned = text.trim();
+
+  // السماح بكتلة Markdown إذا كان الرد كله داخل كتلة واحدة.
+  const fenced = cleaned.match(
+    /^```(?:json)?\s*([\s\S]*?)\s*```$/i
+  );
+
+  if (fenced) {
+    cleaned = fenced[1].trim();
+  }
 
   try {
     return JSON.parse(cleaned);
   } catch {
     throw new UserError(
-      "ردّ النموذج (" + what + ") لا يمكن العربية مباشرة. " +
-      "قلّل نطاق الطلب أو ركّز على ملفات أقل ثم أعد المحاولة.تقرير أرسل: " + String(text).slice(0, 100)
+      "استجابة النموذج (" +
+        what +
+        ") ليست JSON مكتملًا وصالحًا. لم يتم نشر أي تغييرات. أعد المحاولة."
     );
   }
 }
 
-export async function askAI(env, messages, maxTokens, timeoutMs, label) {
-  const model = cleanSecret(env.MODEL) || DEFAULT_MODEL;
-  let result;
-
-  try {
-    result = await withTimeout(env.AI.run(model, {
-      messages,
-      max_tokens: maxTokens,
-      chat_template_kwargs: { enable_thinking: false },
-      reasoning_effort: "low"
-    }), timeoutMs, label);
-  } catch (error) {
-    if (error instanceof UserError) throw error;
-    throw new UserError("فشل استدعاء Cloudflare Workers AI (" + model + "): " +
-      String((error && error.message) || error).slice(0, 600));
-  }
-
+/**
+ * يستخرج النص من أشكال الاستجابة الشائعة في Workers AI.
+ * يرفض القيم غير المعروفة بدل تمرير undefined إلى المراحل التالية.
+ */
+function extractResponseText(result) {
   const candidates = [
     result?.response,
     result?.result?.response,
@@ -75,25 +79,99 @@ export async function askAI(env, messages, maxTokens, timeoutMs, label) {
     }
 
     if (Array.isArray(candidate)) {
-      const joined = candidate.map(part =>
-        typeof part === "string" ? part :
-        typeof part?.text === "string" ? part.text : ""
-      ).join("");
+      const parts = candidate
+        .map((part) => {
+          if (typeof part === "string") return part;
+          if (typeof part?.text === "string") return part.text;
+          return "";
+        })
+        .join("");
 
-      if (joined.trim()) return joined.trim();
+      if (parts.trim()) {
+        return parts.trim();
+      }
     }
 
-    if (candidate && typeof candidate === "object" &&
-        typeof candidate.text === "string" && candidate.text.trim()) {
+    if (
+      candidate &&
+      typeof candidate === "object" &&
+      typeof candidate.text === "string" &&
+      candidate.text.trim()
+    ) {
       return candidate.text.trim();
     }
   }
 
-  const keys = result && typeof result === "object"
-    ? Object.keys(result).join(", ")
-    : typeof result;
+  return null;
+}
 
-  throw new UserError("نموذج Cloudflare AI لم يُرجع نصًا. النموذج: " + model +
-    ". مفاتيح الاستجابة: " + (keys || "لا توجد") +
-    ". تحقق من النموذج وربط AI وسجل أخطاء Worker.");
+export async function askAI(
+  env,
+  messages,
+  maxTokens,
+  timeoutMs,
+  label
+) {
+  const model = cleanSecret(env.MODEL) || DEFAULT_MODEL;
+
+  if (!env.AI || typeof env.AI.run !== "function") {
+    throw new UserError(
+      "خدمة Workers AI غير متاحة. تحقق من ربط AI في إعدادات Worker."
+    );
+  }
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    throw new UserError(
+      "تعذر إرسال الطلب إلى النموذج: قائمة الرسائل فارغة أو غير صالحة."
+    );
+  }
+
+  let result;
+
+  try {
+    result = await withTimeout(
+      env.AI.run(model, {
+        messages,
+        max_tokens: maxTokens,
+        chat_template_kwargs: {
+          enable_thinking: false
+        },
+        reasoning_effort: "low"
+      }),
+      timeoutMs,
+      label
+    );
+  } catch (error) {
+    if (error instanceof UserError) {
+      throw error;
+    }
+
+    throw new UserError(
+      "فشل استدعاء Cloudflare Workers AI (" +
+        model +
+        "): " +
+        String(error?.message || error).slice(0, 500)
+    );
+  }
+
+  const responseText = extractResponseText(result);
+
+  if (responseText === null) {
+    const keys =
+      result && typeof result === "object"
+        ? Object.keys(result).join(", ")
+        : typeof result;
+
+    throw new UserError(
+      "لم يُرجع Workers AI نصًا صالحًا. النموذج: " +
+        model +
+        ". نوع الاستجابة: " +
+        typeof result +
+        ". مفاتيح الاستجابة: " +
+        (keys || "لا توجد") +
+        "."
+    );
+  }
+
+  return responseText;
 }
