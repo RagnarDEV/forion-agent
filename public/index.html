@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0F172A">
+<meta name="description" content="Forion Agent — مساعد برمجي لتطوير مستودعات GitHub مع Pull Request للمراجعة">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Forion Agent</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/css/base.css">
+<link rel="stylesheet" href="/css/components.css">
+<link rel="stylesheet" href="/css/chat.css">
+<link rel="stylesheet" href="/css/motion.css">
+</head>
+<body>
+<a class="skip" href="#main">تخطّ إلى المحتوى</a>
+<div class="bg-grid" aria-hidden="true"></div>
+
+<div class="app">
+  <header class="topbar">
+    <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+    <div class="brand">
+      <h1>Forion Agent</h1>
+      <p>مساعدك البرمجي لتطوير مستودعات GitHub</p>
+    </div>
+    <div id="conn" class="conn" hidden>
+      <span class="conn-dot" aria-hidden="true"></span>
+      <span id="connText"></span>
+      <span id="connModel" class="conn-model"></span>
+    </div>
+    <button class="btn btn-ghost" id="logout" type="button" hidden><span data-icon="logout"></span><span>خروج</span></button>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <section id="login" class="card login" aria-labelledby="loginTitle">
+      <div class="spark" aria-hidden="true"><span data-icon="zap"></span></div>
+      <h2 id="loginTitle" class="grad-text">ابدأ المحادثة</h2>
+      <p class="sub">اتصل بمستودعاتك لتحليل الملفات وتطوير المشروع.</p>
+
+      <label for="token">رمز الإدارة (ADMIN_TOKEN)</label>
+      <div class="inputwrap">
+        <input id="token" class="token-input" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" dir="ltr" placeholder="••••••••">
+        <button class="eye" id="toggleToken" type="button" aria-label="إظهار الرمز" aria-pressed="false"><span data-icon="eye"></span></button>
+      </div>
+
+      <button class="btn btn-primary block" id="connect" type="button"><span data-icon="lock"></span><span class="lbl">اتصال بـ GitHub</span></button>
+      <div id="status" class="banner" role="status" hidden></div>
+
+      <ul class="features">
+        <li class="feature"><span class="ico-box" data-icon="branch"></span><span>كل تعديل في فرع مستقل مع Pull Request</span></li>
+        <li class="feature"><span class="ico-box" data-icon="shield"></span><span>لا دمج تلقائي — أنت من يراجع ويقرر</span></li>
+        <li class="feature"><span class="ico-box" data-icon="file"></span><span>يقرأ الملفات المناسبة فقط ويحافظ على وظائف مشروعك</span></li>
+      </ul>
+      <p class="hint">لا تضع GITHUB_TOKEN في المتصفح. احتفظ بالمفاتيح داخل أسرار Worker في Cloudflare.</p>
+    </section>
+
+    <section id="workspace" hidden>
+      <div class="toolbar">
+        <button id="repoBtn" class="repo-btn" type="button" aria-haspopup="dialog" aria-label="اختيار المستودع">
+          <span data-icon="folder"></span>
+          <span class="repo-text">
+            <span class="repo-label">المستودع</span>
+            <span id="repoName" class="repo-name">—</span>
+          </span>
+          <span id="repoVis" class="badge" hidden></span>
+          <span data-icon="chevron"></span>
+        </button>
+        <button class="btn btn-ghost icon-only" id="refresh" type="button" aria-label="تحديث قائمة المستودعات"><span data-icon="refresh"></span></button>
+        <button class="btn btn-ghost icon-only" id="clear" type="button" aria-label="محادثة جديدة"><span data-icon="plus"></span></button>
+      </div>
+
+      <div class="chatwrap">
+        <div id="chat" role="log" aria-live="polite" aria-label="المحادثة" tabindex="0"></div>
+        <button id="toBottom" class="to-bottom" type="button" aria-label="الانتقال إلى آخر رسالة" hidden><span data-icon="down"></span></button>
+      </div>
+
+      <div class="composer">
+        <div class="composerbox">
+          <label class="sr" for="task">رسالتك</label>
+          <textarea id="task" rows="1" maxlength="4000" placeholder="اكتب رسالتك إلى Forion Agent..."></textarea>
+          <div class="composerfoot">
+            <span class="kbd">Enter للإرسال · Shift+Enter لسطر جديد · / للتركيز</span>
+            <span id="count" class="count" hidden></span>
+            <button class="btn btn-primary flip" id="send" type="button"><span data-icon="send"></span><span class="lbl">إرسال</span></button>
+          </div>
+        </div>
+        <p class="ai-note">المحتوى مُولَّد بالذكاء الاصطناعي. راجع التغييرات قبل الدمج.</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="toasts" class="toasts"></div>
+  <div id="sr" class="sr" role="status"></div>
+</div>
+
+<dialog id="repoDialog" class="dialog" aria-labelledby="repoDialogTitle">
+  <div class="dialog-head">
+    <h2 id="repoDialogTitle">اختر المستودع</h2>
+    <button class="btn btn-ghost icon-only" id="repoClose" type="button" aria-label="إغلاق"><span data-icon="close"></span></button>
+  </div>
+  <div class="searchbox">
+    <span data-icon="search"></span>
+    <input id="repoSearch" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ابحث عن مستودع…" aria-label="البحث عن مستودع">
+  </div>
+  <ul id="repoList" class="repo-list" aria-label="المستودعات"></ul>
+  <p id="repoEmpty" class="sub repo-empty" hidden>لا توجد نتائج مطابقة.</p>
+</dialog>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
