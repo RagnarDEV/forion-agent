@@ -1,4 +1,3 @@
-
 const GH = "https://api.github.com";
 const DEFAULT_MODEL = "@cf/zai-org/glm-4.7-flash";
 const MAX_FILES = 5;
@@ -43,7 +42,7 @@ a{color:#9abaff;overflow-wrap:anywhere}
 <section class="panel" id="login">
 <h2>تسجيل الدخول</h2>
 <label for="token">رمز الإدارة</label>
-<input id="token" type="password" autocomplete="current-password" placeholder="ADMIN_TOKEN">
+<input id="token" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" dir="ltr" placeholder="ADMIN_TOKEN">
 <button id="connect">اتصال وعرض مستودعات GitHub</button>
 <p class="small">لا تضع GITHUB_TOKEN هنا. المطلوب هو رمز الإدارة ADMIN_TOKEN فقط.</p>
 </section>
@@ -172,6 +171,25 @@ function json(data, status = 200) {
   });
 }
 
+// ينظف الأسرار المخزنة: يزيل المسافات والأسطر الجديدة وBOM من الأطراف.
+function cleanSecret(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+// مقارنة بزمن ثابت عبر SHA-256 لتجنب تسريب الفروق بالتوقيت.
+async function safeEqual(a, b) {
+  const enc = new TextEncoder();
+  const [x, y] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b))
+  ]);
+  const xa = new Uint8Array(x);
+  const ya = new Uint8Array(y);
+  let diff = 0;
+  for (let i = 0; i < xa.length; i++) diff |= xa[i] ^ ya[i];
+  return diff === 0;
+}
+
 function safeRepoName(value) {
   return typeof value === "string" &&
     /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value);
@@ -181,7 +199,7 @@ async function github(env, path, options = {}) {
   const response = await fetch(GH + path, {
     ...options,
     headers: {
-      "Authorization": "Bearer " + env.GITHUB_TOKEN,
+      "Authorization": "Bearer " + cleanSecret(env.GITHUB_TOKEN),
       "Accept": "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
       ...(options.body ? {"Content-Type":"application/json"} : {}),
@@ -195,7 +213,9 @@ async function github(env, path, options = {}) {
 
   if (!response.ok) {
     const message = data.message || "طلب GitHub فشل";
-    throw new Error("GitHub (" + response.status + "): " + message);
+    const err = new Error("GitHub (" + response.status + "): " + message);
+    err.fromGitHub = true;
+    throw err;
   }
   return data;
 }
@@ -300,11 +320,19 @@ export default {
     if (request.method !== "GET" && request.method !== "POST") {
       return new Response("Method not allowed", {status:405});
     }
-    if (!env.ADMIN_TOKEN || !env.GITHUB_TOKEN || !env.AI) {
-      return json({error:"إعدادات الخادم ناقصة: ADMIN_TOKEN أو GITHUB_TOKEN أو ربط AI."},503);
+
+    const adminToken = cleanSecret(env.ADMIN_TOKEN);
+    const missing = [];
+    if (!adminToken) missing.push("ADMIN_TOKEN");
+    if (!cleanSecret(env.GITHUB_TOKEN)) missing.push("GITHUB_TOKEN");
+    if (!env.AI) missing.push("ربط AI");
+    if (missing.length) {
+      return json({error:"إعدادات الخادم ناقصة: " + missing.join("، ")},503);
     }
-    if (request.headers.get("X-Admin-Token") !== env.ADMIN_TOKEN) {
-      return json({error:"رمز الإدارة غير صحيح."},401);
+
+    const supplied = cleanSecret(request.headers.get("X-Admin-Token"));
+    if (!supplied || !(await safeEqual(supplied, adminToken))) {
+      return json({error:"رمز الإدارة غير صحيح. تأكد من كتابة الرمز كاملًا دون مسافات، وأنه يطابق السر ADMIN_TOKEN المخزن في Cloudflare."},401);
     }
 
     try {
@@ -502,6 +530,10 @@ export default {
       });
     } catch (error) {
       const message = String(error && error.message || "خطأ غير متوقع");
+      if (error && error.fromGitHub) {
+        // رمز الإدارة قُبل هنا، والفشل من جهة GitHub (غالبًا GITHUB_TOKEN أو صلاحياته).
+        return json({error:"رمز الإدارة صحيح، لكن فشل طلب GitHub. تحقق من GITHUB_TOKEN وصلاحياته.\n" + message.slice(0,700)},502);
+      }
       return json({error:message.slice(0,900)},500);
     }
   }
