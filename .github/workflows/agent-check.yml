@@ -1,0 +1,45 @@
+
+name: Agent Change Checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate JSON files
+        shell: bash
+        run: |
+          find . \
+            -path './.git' -prune -o \
+            -path './node_modules' -prune -o \
+            -type f -name '*.json' -print0 |
+          while IFS= read -r -d '' file; do
+            echo "Checking $file"
+            node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$file"
+          done
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          find . \
+            -path './.git' -prune -o \
+            -path './node_modules' -prune -o \
+            -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) -print0 |
+          while IFS= read -r -d '' file; do
+            echo "Checking $file"
+            node --check "$file"
+          done
