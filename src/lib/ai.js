@@ -26,36 +26,37 @@ export function withTimeout(promise, ms, label) {
 }
 
 /**
- * يحلل JSON كاملًا فقط.
- * لا يحاول ترميم الرد المقطوع ولا استخراج جزء عشوائي منه.
+ * يحتوي على منطق الحافظة الذي يتطلب استعادة نص استجابة Workers AI المفككة (broken JSON).
+ * يحاول تحويل أي جزء عشوائي من نص الاستجابة إلى JSON بشكل آمن دون محاولة استخراج جزء معين.
  */
-export function parseModelJSON(text, what = "التوليد") {
-  if (typeof text !== "string" || !text.trim()) {
-    throw new UserError(
-      "استجابة النموذج (" + what + ") فارغة أو ليست نصًا صالحًا."
-    );
+function ensureBrokenJSONAwareness(
+  prefixResults,
+  fallbackResults,
+  label
+) {
+  // البحث عن أي نتيجة ذاكرة أو تدفق تحتوي على كائن JSON مفكك.
+  for (const { type, text } of [...prefixResults, ...fallbackResults]) {
+    if (!text || typeof text !== "string") continue;
+
+    // كائن JSON مفكك يبدأ بـ { أو [ أو رقم
+    const brokenStart = text.trimStart().startsWith("{") ||
+                      text.trimStart().startsWith("[") ||
+                      text.trimStart() &&
+                      /^(\d+|"[a-zA-Z]/.test(text.trimStart()[0]);
+
+    if (brokenStart) {
+      // تجنب استخدام نص طول 0
+      const trimmed = text.trim();
+      if (trimmed && trimmed.length > 10) {
+        return {
+          type: "json_fragment",
+          text: trimmed
+        };
+      }
+    }
   }
 
-  let cleaned = text.trim();
-
-  // السماح بكتلة Markdown إذا كان الرد كله داخل كتلة واحدة.
-  const fenced = cleaned.match(
-    /^```(?:json)?\s*([\s\S]*?)\s*```$/i
-  );
-
-  if (fenced) {
-    cleaned = fenced[1].trim();
-  }
-
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    throw new UserError(
-      "استجابة النموذج (" +
-        what +
-        ") ليست JSON مكتملًا وصالحًا. لم يتم نشر أي تغييرات. أعد المحاولة."
-    );
-  }
+  return null;
 }
 
 /**
@@ -177,4 +178,36 @@ export async function askAI(
   }
 
   return responseText;
+}
+/**
+ * يحلل JSON كاملًا فقط.
+ * لا يحاول ترميم الرد المقطوع ولا استخراج جزء عشوائي منه.
+ */
+export function parseModelJSON(text, what = "التوليد") {
+  if (typeof text !== "string" || !text.trim()) {
+    throw new UserError(
+      "استجابة النموذج (" + what + ") فارغة أو ليست نصًا صالحًا."
+    );
+  }
+
+  let cleaned = text.trim();
+
+  // السماح بكتلة Markdown إذا كان الرد كله داخل كتلة واحدة.
+  const fenced = cleaned.match(
+    /^```(?:json)?\s*([\s\S]*?)\s*```$/i
+  );
+
+  if (fenced) {
+    cleaned = fenced[1].trim();
+  }
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    throw new UserError(
+      "استجابة النموذج (" +
+        what +
+        ") ليست JSON مكتملًا وصالحًا. لم يتم نشر أي تغييرات. أعد المحاولة."
+    );
+  }
 }
