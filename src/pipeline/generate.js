@@ -121,7 +121,7 @@ export async function generateChanges(env, {
 
   let raw = await askAI(
     env,
-    [
+      [
       systemMessage,
       ...safeHistory,
       { role: "user", content: basePrompt }
