@@ -7,21 +7,33 @@ import { isSafeTextPath } from "../lib/paths.js";
 const normalizeEol = (text) => text.replace(/\r\n/g, "\n");
 const utf8Bytes = (text) => new TextEncoder().encode(text).length;
 
+function explicitlyRequestsNewFiles(task) {
+  if (typeof task !== "string") return false;
+
+  const normalized = task
+    .normalize("NFKC")
+    .replace(/[\u064B-\u065F\u0670]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .toLowerCase();
+
+  return /(?:انشاء|انشئ|اضف|اضافة|create|add)[\s\S]{0,40}(?:ملف|files?)/i.test(normalized) ||
+    /(?:ملفا?\s+جديدا?|ملفات\s+جديدة|ملف\s+جديد|new\s+files?)/i.test(normalized);
+}
+
 function validateOutput(parsed) {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new UserError("رد التوليد غير صالح: يجب أن يكون كائن JSON.");
   }
+
   if (typeof parsed.summary !== "string") {
     throw new UserError("رد التوليد غير صالح: summary مفقودة أو غير نصية.");
   }
+
   if (!Array.isArray(parsed.files)) {
     throw new UserError("رد التوليد غير صالح: files يجب أن تكون مصفوفة.");
   }
-  return parsed;
-}
 
-function explicitlyRequestsNewFiles(task) {
-  return /(?:إنشاء\s+(?:ملف|ملفات)|انشاء\s+(?:ملف|ملفات)|أنشئ\s+(?:ملف|ملفات)|انشئ\s+(?:ملف|ملفات)|ملف\s+جديد|ملفات\s+جديدة|أضف\s+ملف|اضف\s+ملف|create\s+(?:a\s+)?(?:new\s+)?files?|add\s+(?:a\s+)?new\s+files?|new\s+files?)/i.test(task);
+  return parsed;
 }
 
 export async function generateChanges(env, {
@@ -33,18 +45,26 @@ export async function generateChanges(env, {
   if (typeof task !== "string" || !task.trim()) {
     throw new UserError("الطلب المطلوب تنفيذه فارغ أو غير صالح.");
   }
+
   if (!Array.isArray(files)) {
     throw new UserError("قائمة الملفات المرسلة إلى التوليد غير صالحة.");
   }
 
   const originals = new Map();
+
   for (const file of files) {
-    if (!file || typeof file.path !== "string" || typeof file.content !== "string") {
+    if (
+      !file ||
+      typeof file.path !== "string" ||
+      typeof file.content !== "string"
+    ) {
       throw new UserError("إحدى الملفات المقروءة تحتوي بيانات غير صالحة.");
     }
+
     if (originals.has(file.path)) {
       throw new UserError("مسار ملف مكرر: " + file.path);
     }
+
     originals.set(file.path, file.content);
   }
 
@@ -53,9 +73,13 @@ export async function generateChanges(env, {
       ? existingPaths.filter(path => typeof path === "string")
       : []
   );
-  for (const path of originals.keys()) knownPaths.add(path);
+
+  for (const path of originals.keys()) {
+    knownPaths.add(path);
+  }
 
   const creationAllowed = explicitlyRequestsNewFiles(task);
+
   const safeHistory = Array.isArray(history)
     ? history.slice(-4).filter(item =>
         item &&
@@ -63,13 +87,15 @@ export async function generateChanges(env, {
         typeof item.content === "string"
       )
     : [];
+
   const fileContext = JSON.stringify(files);
 
   const creationRule = creationAllowed
     ? "The user explicitly requested file creation. You may create new files only at safe, genuinely new paths. Never overwrite an existing repository path that was not supplied below."
     : "Do not create new files. Only modify exact existing paths supplied below.";
 
-  const schema = '{"summary":"text","files":[{"path":"repository-relative path","content":"complete file content"}]}';
+  const schema =
+    '{"summary":"text","files":[{"path":"repository-relative path","content":"complete file content"}]}';
 
   const basePrompt = [
     "Implement the latest user request using the supplied repository files.",
@@ -77,7 +103,7 @@ export async function generateChanges(env, {
     "Modify only files necessary for the task. Return complete contents for every changed file.",
     creationRule,
     "Do not rename or delete files. Do not return unchanged files.",
-    "New paths must pass normal safe text-file path rules and must not already exist in the repository.",
+    "New paths must pass safe text-file path rules and must not already exist in the repository.",
     "Create at most 3 new files per request.",
     "Each returned file must be no larger than " + LIMITS.maxFileBytes + " UTF-8 bytes.",
     "Preserve existing behavior unless the task requires a change.",
@@ -95,21 +121,30 @@ export async function generateChanges(env, {
 
   let raw = await askAI(
     env,
-    [systemMessage, ...safeHistory, { role: "user", content: basePrompt }],
+    [
+      systemMessage,
+      ...safeHistory,
+      { role: "user", content: basePrompt }
+    ],
     14000,
     TIMEOUTS.generateMs,
     "التحليل والتوليد"
   );
 
   let parsed;
+
   try {
     parsed = validateOutput(parseModelJSON(raw, "التوليد"));
   } catch {
     const retryPrompt = [
-      "Your previous response was not valid complete JSON. Retry from scratch.",
+      "Your previous response was invalid or incomplete. Retry from scratch.",
       "Make the smallest useful safe change set and return no more than 3 files total.",
-      "Do not omit or truncate file content. If you cannot complete the task safely, return valid JSON with files as an empty array and explain why in summary.",
-      "File-creation permission for this request: " + (creationAllowed ? "allowed only for genuinely new safe paths" : "not allowed"),
+      "Do not omit or truncate file content.",
+      "If you cannot complete the task safely, return valid JSON with files as an empty array and explain why in summary.",
+      "File-creation permission: " +
+        (creationAllowed
+          ? "allowed only for genuinely new safe paths"
+          : "not allowed"),
       "Required schema: " + schema,
       "Return only one complete JSON object. No Markdown.",
       "LATEST USER REQUEST:\n" + task,
@@ -118,11 +153,16 @@ export async function generateChanges(env, {
 
     raw = await askAI(
       env,
-      [systemMessage, ...safeHistory, { role: "user", content: retryPrompt }],
+      [
+        systemMessage,
+        ...safeHistory,
+        { role: "user", content: retryPrompt }
+      ],
       14000,
       TIMEOUTS.generateMs,
       "إعادة محاولة التوليد"
     );
+
     parsed = validateOutput(parseModelJSON(raw, "إعادة محاولة التوليد"));
   }
 
@@ -138,49 +178,70 @@ export async function generateChanges(env, {
       typeof file.path !== "string" ||
       typeof file.content !== "string"
     ) {
-      throw new UserError("رفض التوليد: إحدى النتائج تفتقد المسار أو المحتوى النصي.");
+      throw new UserError(
+        "رفض التوليد: إحدى النتائج تفتقد المسار أو المحتوى النصي."
+      );
     }
 
     const path = file.path;
+
     if (!isSafeTextPath(path)) {
-      throw new UserError("رفض التوليد: مسار غير آمن أو امتداد غير مسموح: " + path);
+      throw new UserError(
+        "رفض التوليد: مسار غير آمن أو امتداد غير مسموح: " + path
+      );
     }
+
     if (seen.has(path)) {
-      throw new UserError("رفض التوليد: تكرر الملف نفسه في الاستجابة: " + path);
+      throw new UserError(
+        "رفض التوليد: تكرر الملف نفسه في الاستجابة: " + path
+      );
     }
+
     seen.add(path);
 
     const isExistingSuppliedFile = originals.has(path);
+
     if (!isExistingSuppliedFile) {
       if (!creationAllowed) {
         throw new UserError(
-          "رفض التوليد: لا يُسمح بإنشاء ملفات جديدة إلا إذا طلبت ذلك صراحةً: " + path
+          "رفض التوليد: لا يُسمح بإنشاء ملفات جديدة إلا إذا طلبت ذلك صراحةً: " +
+            path
         );
       }
+
       if (knownPaths.has(path)) {
         throw new UserError(
-          "رفض التوليد: المسار موجود مسبقًا في المستودع ولم يُرسل للتعديل: " + path
+          "رفض التوليد: المسار موجود مسبقًا في المستودع ولم يُرسل للتعديل: " +
+            path
         );
       }
+
       newFileCount++;
+
       if (newFileCount > 3) {
-        throw new UserError("رفض التوليد: الحد الأقصى لإنشاء الملفات في الطلب الواحد هو 3.");
+        throw new UserError(
+          "رفض التوليد: الحد الأقصى لإنشاء الملفات في الطلب الواحد هو 3."
+        );
       }
     }
 
     if (!file.content.trim()) {
       throw new UserError("رفض التوليد: محتوى الملف فارغ: " + path);
     }
+
     if (utf8Bytes(file.content) > LIMITS.maxFileBytes) {
       throw new UserError(
-        "رفض التوليد: الملف " + path + " يتجاوز حد الحجم " +
-        LIMITS.maxFileBytes + " بايت."
+        "رفض التوليد: الملف " + path +
+          " يتجاوز حد الحجم " + LIMITS.maxFileBytes + " بايت."
       );
     }
 
     if (isExistingSuppliedFile) {
       const original = originals.get(path);
-      if (normalizeEol(file.content) === normalizeEol(original)) continue;
+
+      if (normalizeEol(file.content) === normalizeEol(original)) {
+        continue;
+      }
 
       if (
         original.length > 1500 &&
@@ -188,13 +249,19 @@ export async function generateChanges(env, {
       ) {
         throw new UserError(
           "رفض التعديل لأن الملف " + path +
-          " أقصر كثيرًا من أصله. قد تكون الاستجابة مقتطعة؛ لم يتم نشر التغييرات."
+            " أقصر كثيرًا من أصله. قد تكون الاستجابة مقتطعة؛ لم يتم نشر التغييرات."
         );
       }
     }
 
-    changed.push({ path, content: file.content });
+    changed.push({
+      path,
+      content: file.content
+    });
   }
 
-  return { summary: parsed.summary, changed };
+  return {
+    summary: parsed.summary,
+    changed
+  };
 }
