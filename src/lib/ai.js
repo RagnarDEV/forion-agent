@@ -106,7 +106,7 @@ function extractResponseText(result) {
 }
 
 /**
- * يستدعي Cloudflare Workers AI ويعيد النص الناتج.
+ * تستدعي Cloudflare Workers AI ويعيد النص الناتج.
  */
 export async function askAI(
   env,
