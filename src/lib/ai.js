@@ -1,4 +1,3 @@
-
 import { DEFAULT_MODEL } from "../config.js";
 import { UserError } from "./errors.js";
 import { cleanSecret } from "./security.js";
@@ -26,19 +25,18 @@ export function withTimeout(promise, ms, label) {
 }
 
 /**
- * يحلل JSON كاملًا فقط.
- * لا يحاول ترميم الرد المقطوع ولا استخراج جزء عشوائي منه.
+ * يحلل استجابة النموذج.
+ * يدعم كتل Markdown المفككة ويوفر آلية تجميع آمنة.
  */
 export function parseModelJSON(text, what = "التوليد") {
   if (typeof text !== "string" || !text.trim()) {
     throw new UserError(
       "استجابة النموذج (" + what + ") فارغة أو ليست نصًا صالحًا."
     );
-  }
 
   let cleaned = text.trim();
 
-  // السماح بكتلة Markdown إذا كان الرد كله داخل كتلة واحدة.
+  // السماح بكتلة Markdown خارجية كاملة
   const fenced = cleaned.match(
     /^```(?:json)?\s*([\s\S]*?)\s*```$/i
   );
@@ -47,8 +45,23 @@ export function parseModelJSON(text, what = "التوليد") {
     cleaned = fenced[1].trim();
   }
 
+  // تجميع كتل Markdown المفككة
+  const recombined = cleaned.replace(/```[^`]*```/g, (match) => {
+    return match.replace(/^```[\s\S]*?```$/i, "$1").replace(/^```json\s*|[\s\n]*```$/g, "").trim();
+  });
+
+  // تطبيق القواعد الأساسية للتحليل (بدون إعادة تسلسل HTML)
+  const simplified = recombined.replace(/\s*<[bdi][^>]*>[^<]*<\/\1>/g, "");
+  let finalText = simplified.replace(/<[^>]*>/g, "").trim();
+
+  // إزالة التعليقات البرمجية الأمامية
+  const commentRegex = /^(?:\/\/|#).*$/gm;
+  finalText = finalText.replace(commentRegex, "");
+
+  let parsed;
+
   try {
-    return JSON.parse(cleaned);
+    parsed = JSON.parse(finalText);
   } catch {
     throw new UserError(
       "استجابة النموذج (" +
@@ -56,6 +69,8 @@ export function parseModelJSON(text, what = "التوليد") {
         ") ليست JSON مكتملًا وصالحًا. لم يتم نشر أي تغييرات. أعد المحاولة."
     );
   }
+
+  return parsed;
 }
 
 /**
