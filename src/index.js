@@ -2,7 +2,7 @@
 const GH = "https://api.github.com";
 const DEFAULT_MODEL = "@cf/zai-org/glm-4.7-flash";
 const MAX_FILES = 5;
-const MAX_FILE_CHARS = 14000;
+const MAX_FILE_CHARS = 30000;
 const MAX_TREE_ENTRIES = 3500;
 
 const HTML = String.raw`<!doctype html>
@@ -492,14 +492,16 @@ export default {
         throw new Error("المستودع يحتوي على عدد كبير جدًا من الملفات لهذه النسخة.");
       }
 
+      // لا نعرض للذكاء الاصطناعي ملفات أكبر من الحد المسموح.
+      // حجم GitHub بالبايت؛ نستخدم الحد نفسه كمرشح محافظ لتفادي تحميل ملفات ضخمة.
       const candidates = treeEntries
         .filter(item => item.type === "blob" && isSafeTextPath(item.path))
         .slice(0, 900)
         .map(item => ({path:item.path, sha:item.sha, size:item.size || 0}))
-        .filter(item => item.size <= MAX_FILE_CHARS * 4);
+        .filter(item => item.size <= MAX_FILE_CHARS);
 
       if (!candidates.length) {
-        throw new Error("لم يعثر الوكيل على ملفات نصية مناسبة للتعديل.");
+        throw new Error("لم يعثر الوكيل على ملفات نصية مناسبة ضمن حد الحجم المسموح.");
       }
 
       const selectionPrompt = [
@@ -542,7 +544,8 @@ export default {
         const content = decodeBase64(blob.content);
 
         if (content.length > MAX_FILE_CHARS) {
-          throw new Error("الملف أكبر من الحد المسموح: " + path);
+          throw new Error("الملف يتجاوز الحد المسموح (" + MAX_FILE_CHARS +
+            " حرف). لم يتم تعديل الملف: " + path);
         }
 
         files.push({path, sha:item.sha, content});
@@ -577,7 +580,8 @@ export default {
             !originalPaths.has(file.path) || seen.has(file.path) ||
             !isSafeTextPath(file.path) || typeof file.content !== "string" ||
             file.content.length > MAX_FILE_CHARS) {
-          throw new Error("رفض الوكيل التعديلات بسبب مسار غير متوقع أو ملف كبير.");
+          throw new Error("رفض الوكيل التعديلات بسبب مسار غير متوقع أو ملف يتجاوز حد " +
+            MAX_FILE_CHARS + " حرفًا.");
         }
         seen.add(file.path);
       }
