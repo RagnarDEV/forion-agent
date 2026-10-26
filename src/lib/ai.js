@@ -2,6 +2,15 @@ import { DEFAULT_MODEL } from "../config.js";
 import { UserError } from "./errors.js";
 import { cleanSecret } from "./security.js";
 
+export const MIN_CHARS_FOR_AUTO_FIX = 1000; // عدد الأحرف الأدنى عند فشل التحليل يدويًا لتفعيل الاستراتيجية التلقائية
+
+function findPossibleJson(text) {
+  // استراتيجية هجومية لاكتشاف JSON محتمل داخل نص عشوائي
+  const tokens = text.split(/([^{]+)\{([^}]+\{?[^}]*\}?\s*)\}/);  
+  if (tokens.length === 5 && tokens[2].match(/{/)) return tokens[2] + tokens[3];
+  return null;
+}
+
 export function withTimeout(promise, ms, label) {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -16,8 +25,8 @@ export function withTimeout(promise, ms, label) {
 
 export function parseModelJSON(text, what) {
   let cleaned = String(text).trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "");
+    .replace(/^```:?(json)?\s*/i, "")
+    .replace(/\s*```:?$/, "");
 
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
@@ -27,8 +36,8 @@ export function parseModelJSON(text, what) {
     return JSON.parse(cleaned);
   } catch {
     throw new UserError(
-      "ردّ النموذج (" + what + ") ليس JSON صالحًا أو جاء مقطوعًا. " +
-      "قلّل نطاق الطلب أو ركّز على ملفات أقل ثم أعد المحاولة."
+      "ردّ النموذج (" + what + ") لا يمكن العربية مباشرة. " +
+      "قلّل نطاق الطلب أو ركّز على ملفات أقل ثم أعد المحاولة.تقرير أرسل: " + String(text).slice(0, 100)
     );
   }
 }
