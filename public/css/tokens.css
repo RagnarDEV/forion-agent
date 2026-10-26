@@ -1,0 +1,58 @@
+/* Design tokens — مستمدة من ui-ux-pro-max-skill: Developer Tool/IDE + AI Chatbot (داكن) */
+:root {
+  color-scheme: dark;
+
+  /* أسطح */
+  --bg: #0F172A;
+  --bg-deep: #020617;
+  --surface: #1B2336;
+  --surface-2: #232D45;
+  --muted: #272F42;
+  --input: #0B1222;
+
+  /* نصوص */
+  --fg: #F8FAFC;
+  --fg-2: #CBD5E1;
+  --fg-muted: #94A3B8;
+
+  /* خطوط */
+  --border: #334155;
+  --border-strong: #64748B;
+
+  /* الهوية */
+  --primary: #7C3AED;
+  --primary-deep: #6D28D9;
+  --violet: #A78BFA;
+  --violet-soft: #C4B5FD;
+  --cyan: #22D3EE;
+  --teal: #0891B2;
+
+  /* حالات */
+  --green: #22C55E;
+  --green-text: #86EFAC;
+  --red: #EF4444;
+  --red-text: #FCA5A5;
+  --amber-text: #FCD34D;
+
+  /* الخطوط */
+  --font-ui: "IBM Plex Sans", "Noto Sans Arabic", "Segoe UI", Tahoma, system-ui, sans-serif;
+  --font-display: "Space Grotesk", "Noto Sans Arabic", "Segoe UI", Tahoma, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* الشكل */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-pill: 999px;
+  --shadow-glow: 0 8px 22px -10px rgba(124, 58, 237, .9);
+  --shadow-card: 0 24px 60px -28px rgba(0, 0, 0, .8);
+  --ring: 0 0 0 3px rgba(167, 139, 250, .35);
+
+  /* الحركة */
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --t-fast: .15s;
+  --t-base: .25s;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
