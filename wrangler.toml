@@ -1,4 +1,6 @@
 
+# AUTO-DEPLOY TEST: 2026-10-26
+
 name = "forion-agent"
 main = "src/index.js"
 compatibility_date = "2026-10-26"
