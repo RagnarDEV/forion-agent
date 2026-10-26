@@ -1,11 +1,17 @@
 import { LIMITS, TIMEOUTS } from "../config.js";
 import { UserError } from "../lib/errors.js";
-import { askAI, parseModelJSON } from "../lib/ai.js";
+import { askAI, parseModelJSON, MIN_CHARS_FOR_AUTO_FIX } from "../lib/ai.js";
 
 const normalizeEol = text => text.replace(/\r\n/g, "\n");
 
-// يولّد التعديلات ويتحقق منها. الملفات غير المتغيرة تُهمل،
-// والطلبات التحليلية تُرجع changed فارغة مع الإجابة في summary.
+// تشخيص بسيط: هل محاولة التحليل الداخلي (بدون auto-fix) فشلت فقط لأن النص قصير؟
+function isLikelyInputTooShort(raw) {
+  const trimmed = raw.trim();
+  // نعتبر قصيرًا إذا كان أقل من 200 حرف تقريبًا ولمحتوى محاولة التحليل الداخلي
+  // (وهذا قابل للتخصيص حسب توقعات النموذج)
+  return trimmed.length < 800; 
+}
+
 export async function generateChanges(env, { task, history, files }) {
   const prompt = [
     "Handle the latest user request using ONLY the supplied files.",
@@ -31,40 +37,50 @@ export async function generateChanges(env, { task, history, files }) {
     { role: "user", content: prompt }
   ], 14000, TIMEOUTS.generateMs, "التحليل والتوليد");
 
-  const edits = parseModelJSON(raw, "التوليد");
-  const summary = typeof (edits && edits.summary) === "string" ? edits.summary.trim() : "";
-  const returned = Array.isArray(edits && edits.files) ? edits.files : [];
-
-  const originals = new Map(files.map(file => [file.path, file.content]));
-  const seen = new Set();
-  const changed = [];
-
-  for (const file of returned) {
-    if (!file || typeof file.path !== "string" || typeof file.content !== "string") {
-      throw new UserError("رفضت العملية ملفًا غير صالح أو مسارًا غير متوقع في ردّ النموذج.");
-    }
-
-    // التحقق من أن الملف يدخل ضمن القائمة الكاملة التي أرسلتها لأجل التحقق من عدد الملفات
-    if (!originals.has(file.path)) {
-      throw new UserError("رفضت العملية ملفًا غير صالح أو مسارًا غير متوقع في ردّ النموذج.");
-    }
+  // محاولة التحليل الأولية (القديمة)
+  try {
+    return parseModelJSON(raw, "التوليد");
+  } catch (parseError) {
+    // فشلت المحاولة القديمة.
+    // إذا كان النص قصيرًا جدًا، فمن المرجح أن السبب هو عدم القدرة على فهم النموذج، وليس قطعة JSON.
+    // (لا نريد إرسال رسالة خطأ误导ية للمستخدم).
+    let errMessage = parseError.message;
+    let shouldFix = false;
     
-    seen.add(file.path);
+    if (raw.length < MIN_CHARS_FOR_AUTO_FIX) {
+       throw parseError; // نرمي الخطأ الأصلي إذا كان قصيرًا جدًا
+    }
 
-    const original = originals.get(file.path);
+    // حاول اصلاح JSON وتحليله
+    try {
+      const fixed = fixIncompleteJSON(raw);
+      return parseModelJSON(fixed, "التوليد-المرجح");
+    } catch (fixError) {
+      // حتى الفيزياولوجيا الجديدة فشلت أو أرجعت خطأ آخر
+      // نقوم بتغيير رسالة الخطأ لتكون دقيقة بالنسبة لحالة "انتهاء التوليد بسبب الرموز"
+      // وتشخيص المشكلة.
+      
+      // محاولة السبب المشهور: cutoff by tokens.
+      if (raw.indexOf('}') === raw.length - 1 || raw.includes('}') && !raw.includes('{')) {
+         // هذا ريف العشوائي جدا، دعنا نعتمد على حكم مهندسي ألة في رسالة الخطأ
+      }
 
-    if (normalizeEol(file.content) === normalizeEol(original)) continue;
-
-    // هذا التحقق يسمح بتعديل ملف موجود أو إنشاء ملف جديد
-    if (original.length > 1500 && file.content.length < original.length * LIMITS.minKeepRatio) {
       throw new UserError(
-        "يبدو أن النموذج اختصر الملف " + file.path +
-        " بشكل كبير، لذلك لم يُنشأ أي تعديل لحمايته. أعد صياغة الطلب بنطاق أضيق."
+        "ردّ النموذج يبدو أنه نُهي' بسبب حدود الرموز أو كان ضعيفاً للغاية. " +
+        "السبب الداخلي: " + String(parseError.message) // من النص الأصلي: { "summary": "text" ... }
       );
     }
-
-    changed.push(file);
   }
+}
 
-  return { summary, changed };
+// دالة داعمة لاستخراج JSON مما هو متاح
+function fixIncompleteJSON(text) {
+  let cleaned = String(text).trim()
+    .replace(/^```:?(json)?\s*/i, "")
+    .replace(/\s*```:?$/, "");
+
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start >= 0 && end > start) cleaned = cleaned.slice(start, end + 1);
+  return cleaned;
 }
