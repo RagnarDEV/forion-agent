@@ -12,28 +12,41 @@ const HTML = String.raw`<!doctype html>
 <meta name="color-scheme" content="dark">
 <title>Forion Agent </title>
 <style>
-*{box-sizing:border-box}
-body{margin:0;background:#0b1020;color:#edf1fa;font-family:system-ui,sans-serif}
-main{max-width:850px;margin:auto;padding:20px 14px 50px}
-header,.panel{background:#121a2c;border:1px solid #293650;border-radius:16px;padding:19px;margin-bottom:15px}
-h1{font-size:25px;margin:0 0 8px}
-h2{font-size:19px;margin:0 0 12px}
-p{color:#aab7cc;line-height:1.8}
-label{display:block;margin:15px 0 7px;font-size:14px}
-input,textarea,select,button{width:100%;padding:12px;border-radius:10px;border:1px solid #35445f;background:#0a1221;color:#f4f6ff;font:inherit}
-textarea{min-height:145px;resize:vertical}
-button{background:#5878f0;border:0;font-weight:700;margin-top:12px;cursor:pointer}
-button:disabled{opacity:.55;cursor:wait}
-.secondary{background:#34425c}
-.small{font-size:12px;color:#95a6c0}
-.status{white-space:pre-wrap;overflow-wrap:anywhere;background:#09111e;padding:12px;border-radius:10px;margin-top:13px}
-pre{white-space:pre-wrap;overflow-wrap:anywhere}
-a{color:#9abaff;overflow-wrap:anywhere}
-[hidden]{display:none!important}
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap');
+:root{color-scheme:dark;--bg:#080d19;--border:rgba(148,170,207,.16);--text:#f3f6ff;--primary:#8b7cff;--primary-2:#6c5ce7;--cyan:#58d8e8;--success:#6de0b5;--shadow:0 24px 70px rgba(0,0,0,.28)}
+*{box-sizing:border-box}html{min-height:100%;scroll-behavior:smooth}
+body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 8% 0%,rgba(108,92,231,.18),transparent 36%),radial-gradient(ellipse at 95% 12%,rgba(52,191,213,.11),transparent 32%),var(--bg);color:var(--text);font-family:'Cairo',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.16;background-image:linear-gradient(rgba(150,170,210,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(150,170,210,.07) 1px,transparent 1px);background-size:36px 36px;mask-image:linear-gradient(to bottom,#000,transparent 85%)}
+main{position:relative;width:min(100% - 32px,820px);margin:0 auto;padding:clamp(22px,5vw,54px) 0 64px}
+header,.panel{position:relative;overflow:hidden;background:linear-gradient(145deg,rgba(20,31,53,.94),rgba(13,21,37,.94));border:1px solid var(--border);border-radius:24px;padding:clamp(20px,4vw,32px);margin-bottom:18px;box-shadow:var(--shadow);backdrop-filter:blur(18px);animation:rise-in .65s cubic-bezier(.2,.8,.2,1) both}
+header:after{content:"";position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,transparent,var(--primary),var(--cyan),transparent)}
+header:before{content:"✦";position:absolute;left:25px;top:18px;color:rgba(139,124,255,.24);font-size:72px;line-height:1;pointer-events:none}
+h1{font-family:'Inter','Cairo',sans-serif;font-size:clamp(29px,6vw,43px);letter-spacing:-1.4px;line-height:1.15;margin:0 0 14px;font-weight:800;background:linear-gradient(100deg,#fff 15%,#c7c2ff 60%,#8be7ed);-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font-size:20px;line-height:1.5;margin:0 0 18px;font-weight:800;display:flex;align-items:center;gap:10px}h2:before{content:"";display:block;width:4px;height:22px;border-radius:8px;background:linear-gradient(var(--primary),var(--cyan));box-shadow:0 0 16px #8b7cff66}
+p{color:#b4c1d7;line-height:1.9;margin:8px 0}header p:first-of-type{max-width:600px;font-size:15px}
+header p.small{display:inline-flex;align-items:center;gap:8px;margin-top:12px;padding:7px 12px;border:1px solid rgba(109,224,181,.18);border-radius:999px;background:rgba(109,224,181,.06);color:#a4e8ce}
+header p.small:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--success);box-shadow:0 0 12px var(--success)}
+.panel{animation-delay:.08s}label{display:block;margin:19px 0 8px;font-size:13px;font-weight:700;color:#d6def0}
+input,textarea,select,button{width:100%;padding:13px 15px;border-radius:13px;border:1px solid rgba(148,170,207,.22);background:rgba(6,12,24,.72);color:var(--text);font:inherit;transition:border-color .2s,box-shadow .2s,background .2s,transform .2s}
+input,textarea,select{outline:none}input:focus,textarea:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 4px rgba(139,124,255,.13);background:rgba(8,14,28,.96)}
+input::placeholder,textarea::placeholder{color:#6f809e}textarea{min-height:150px;resize:vertical;line-height:1.8}
+button{position:relative;isolation:isolate;overflow:hidden;background:linear-gradient(110deg,var(--primary-2),#8172f5 55%,#4cbed0);border:1px solid rgba(255,255,255,.12);font-weight:800;margin-top:12px;cursor:pointer;box-shadow:0 8px 24px rgba(108,92,231,.2)}
+button:after{content:"";position:absolute;z-index:-1;inset:0;background:linear-gradient(110deg,transparent,rgba(255,255,255,.2),transparent);transform:translateX(-120%);transition:transform .55s}
+button:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 30px rgba(108,92,231,.3)}button:hover:not(:disabled):after{transform:translateX(120%)}button:active:not(:disabled){transform:translateY(0) scale(.99)}
+button:focus-visible,a:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}button:disabled{opacity:.58;cursor:wait;transform:none}
+.secondary{background:rgba(42,57,82,.62);border-color:var(--border);box-shadow:none;color:#dbe5f7}.secondary:hover:not(:disabled){background:rgba(57,75,106,.75);box-shadow:0 8px 22px rgba(0,0,0,.15)}
+.small{font-size:12px;color:#91a2bf}.status{white-space:pre-wrap;overflow-wrap:anywhere;background:rgba(6,12,24,.78);border:1px solid var(--border);border-radius:14px;padding:15px 16px;margin-top:16px;color:#c9d6eb;line-height:1.8;box-shadow:inset 3px 0 0 var(--primary);animation:fade-in .25s ease both}
+#result{margin-top:20px;padding:18px;border:1px solid rgba(109,224,181,.2);border-radius:16px;background:linear-gradient(135deg,rgba(109,224,181,.07),rgba(88,216,232,.035));animation:rise-in .35s ease both}#result p{overflow-wrap:anywhere}
+pre{white-space:pre-wrap;overflow-wrap:anywhere}a{color:#a8c7ff;overflow-wrap:anywhere;text-decoration-thickness:1px;text-underline-offset:4px}a:hover{color:var(--cyan)}select{appearance:auto}[hidden]{display:none!important}
+@keyframes rise-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes fade-in{from{opacity:0}to{opacity:1}}
+@media(min-width:700px){main{padding-top:58px}header{padding:36px 38px}.panel{padding:28px 32px}}
+@media(max-width:480px){main{width:calc(100% - 22px);padding-top:18px}header,.panel{border-radius:19px;padding:20px 17px}header:before{left:12px;top:12px;font-size:54px}h1{font-size:31px}h2{font-size:18px}input,textarea,select,button{padding:12px;font-size:14px}.small{line-height:1.8}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body><main>
 <header>
+<p class="small">FORION · AI DEVELOPER</p>
 <h1>Forion Agent</h1>
 <p>وكيل برمجي سحابي. اكتب المهمة فقط، وسيستكشف الوكيل ملفات المشروع ويقترح التعديلات تلقائيًا.</p>
 <p class="small">التعديلات تُرفع إلى فرع مستقل وتُعرض في Pull Request. لا يوجد دمج تلقائي.</p>
@@ -49,6 +62,7 @@ a{color:#9abaff;overflow-wrap:anywhere}
 
 <section class="panel" id="workspace" hidden>
 <h2>مهمة جديدة</h2>
+<p class="small">اختر المستودع، صف النتيجة المطلوبة، واترك للوكيل إعداد التغييرات في فرع مستقل.</p>
 <label for="repo">المستودع</label>
 <select id="repo"></select>
 <label for="task">ما الذي تريد من الوكيل تنفيذه؟</label>
