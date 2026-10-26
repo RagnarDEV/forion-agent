@@ -1,0 +1,11 @@
+
+name = "forion-agent"
+main = "src/index.js"
+compatibility_date = "2026-10-26"
+
+[ai]
+binding = "AI"
+
+[vars]
+REPOS = "RagnarDEV/JobForion"
+MODEL = "@cf/deepseek-ai/deepseek-v4.1-flash-1017"
