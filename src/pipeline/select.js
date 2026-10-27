@@ -231,4 +231,3 @@ export async function selectFiles(env, { task, history, scan }) {
   // سنرجع الكائن المُبيع للمركِّب السفلي لاستخدامه لاحقًا.
   return { files: chosen, skillContext: baseSkillContext, interactionMode };
 }
-}

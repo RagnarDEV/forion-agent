@@ -33,44 +33,45 @@ export function parseModelJSON(text, what = "التوليد") {
     throw new UserError(
       "استجابة النموذج (" + what + ") فارغة أو ليست نصًا صالحًا."
     );
+  } else {
+    let cleaned = text.trim();
 
-  let cleaned = text.trim();
-
-  // السماح بكتلة Markdown خارجية كاملة
-  const fenced = cleaned.match(
-    /^```(?:json)?\s*([\s\S]*?)\s*```$/i
-  );
-
-  if (fenced) {
-    cleaned = fenced[1].trim();
-  }
-
-  // تجميع كتل Markdown المفككة
-  const recombined = cleaned.replace(/```[^`]*```/g, (match) => {
-    return match.replace(/^```[\s\S]*?```$/i, "$1").replace(/^```json\s*|[\s\n]*```$/g, "").trim();
-  });
-
-  // تطبيق القواعد الأساسية للتحليل (بدون إعادة تسلسل HTML)
-  const simplified = recombined.replace(/\s*<[bdi][^>]*>[^<]*<\/\1>/g, "");
-  let finalText = simplified.replace(/<[^>]*>/g, "").trim();
-
-  // إزالة التعليقات البرمجية الأمامية
-  const commentRegex = /^(?:\/\/|#).*$/gm;
-  finalText = finalText.replace(commentRegex, "");
-
-  let parsed;
-
-  try {
-    parsed = JSON.parse(finalText);
-  } catch {
-    throw new UserError(
-      "استجابة النموذج (" +
-        what +
-        ") ليست JSON مكتملًا وصالحًا. لم يتم نشر أي تغييرات. أعد المحاولة."
+    // السماح بكتلة Markdown خارجية كاملة
+    const fenced = cleaned.match(
+      /^```(?:json)?\s*([\s\S]*?)\s*```$/i
     );
-  }
 
-  return parsed;
+    if (fenced) {
+      cleaned = fenced[1].trim();
+    }
+
+    // تجميع كتل Markdown المفككة
+    const recombined = cleaned.replace(/```[^`]*```/g, (match) => {
+      return match.replace(/^```[\s\S]*?```$/i, "$1").replace(/^```json\s*|[\s\n]*```$/g, "").trim();
+    });
+
+    // تطبيق القواعد الأساسية للتحليل (بدون إعادة تسلسل HTML)
+    const simplified = recombined.replace(/\s*<[bdi][^>]*>[^<]*<\/\1>/g, "");
+    let finalText = simplified.replace(/<[^>]*>/g, "").trim();
+
+    // إزالة التعليقات البرمجية الأمامية
+    const commentRegex = /^(?:\/\/|#).*$/gm;
+    finalText = finalText.replace(commentRegex, "");
+
+    let parsed;
+
+    try {
+      parsed = JSON.parse(finalText);
+    } catch {
+      throw new UserError(
+        "استجابة النموذج (" +
+          what +
+          ") ليست JSON مكتملًا وصالحًا. لم يتم نشر أي تغييرات. أعد المحاولة."
+      );
+    }
+
+    return parsed;
+  }
 }
 
 /**
