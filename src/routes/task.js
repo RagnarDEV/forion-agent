@@ -34,9 +34,8 @@ export async function handleTask(request, env, ctx) {
   if (!task) {
     return json({ error: "اكتب المهمة أولًا." }, 400);
   }
-  if (task.length > LIMITS.maxTaskChars) {
-    return json({ error: "الرسالة أطول من " + LIMITS.maxTaskChars + " حرف." }, 400);
-  }
+
+  // لا يُجري هذا المسار تحققًا من طول الرسالة.
 
   return streamTask(env, ctx, {
     repo,

@@ -8,9 +8,9 @@ export const LIMITS = Object.freeze({
   maxFileBytes: 24000,
   maxTotalBytes: 70000,
   maxCandidates: 700,
-  maxTaskChars: 4000,
+  maxTaskChars: 50000,
   maxHistoryItems: 6,
-  maxHistoryChars: 1500,
+  maxHistoryChars: 15000,
   maxNewFiles: 3,
   // يُرفض أي ملف يعود أصغر من هذه النسبة من أصله (حماية من الاقتطاع).
   minKeepRatio: 0.4
