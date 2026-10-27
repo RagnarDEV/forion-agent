@@ -8,7 +8,7 @@ const utf8Bytes = (text) => new TextEncoder().encode(text).length;
 
 const SAFE_EXTENSIONS = new Set([
   "js", "mjs", "cjs", "ts", "tsx", "jsx", "html", "css", "json",
-  "md", "txt", "yml", "yaml", "toml", "lg"
+  "md", "txt", "yml", "yaml", "toml", "lg", "robot"
 ]);
 
 function explicitlyRequestsNewFiles(task) {
