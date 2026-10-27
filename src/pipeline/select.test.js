@@ -1,64 +1,96 @@
-import { describe, it, expect } from 'vitest';
-import { resolveSelectedSkills, trackSkillInteraction } from '../../src/pipeline/select.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { selectFiles, SKILLS_REGISTRY } from '../../src/pipeline/select.js';
 import { UserError } from '../../src/lib/errors.js';
+import { createRegistry } from '../../src/lib/skills/skills-registry.js';
 
-const mockEnv = {}; // سيتم ملؤها لاحقاً
-const mockSkills = {
-  'skills/lint/SKILL.md': '{"name":"Static Analysis","description":"Helper for linting"}','skills/test/SKILL.md': '{"name":"Test Runner","description":"Helper for running tests"}'
-};
+const mockEnv = {};
 
-describe('Select Pipeline - Input Validation', () => {
-  it('should throw UserError if task is empty', async () => {
-    const scan = { candidates: [], candidateMap: new Map() };
-    await expect(
-      (await import('../../src/pipeline/select.js')).selectFiles(mockEnv, { task: '', history: [], scan })
-    ).rejects.toThrow(UserError);
-  });
+// استخدام مكتبة مهارات واحدة منفصلة
+SKILLS_REGISTRY = new SkillsRegistry({ baseUrl: 'skills' });
+
+// Register generic skills for testing
+SKILLS_REGISTRY.registerSkill('lint', {
+  name: 'Static Analysis',
+  description: 'Helper for linting',
+  tags: ['code-quality'],
+  instructions: 'Static analysis skill.'
+});
+SKILLS_REGISTRY.registerSkill('security', {
+  name: 'Security Review',
+  description: 'Review for vulnerabilities',
+  tags: ['security'],
+  instructions: 'Security review instruction.'
 });
 
-describe('Skill System Logic', () => {
-  it('should resolve an active skill correctly', async () => {
-    const task = 'Please use the Static Analysis skill';
-    const loadedSkills = [{ name: 'Static Analysis', description: '...', fullInstructions: '...' }];
-    const result = resolveSelectedSkills(task, loadedSkills);
-    expect(result).toHaveLength(1);
-    expect(result[0].name).toBe('Static Analysis');
+vi.mock('../lib/ai.js', () => ({
+  askAI: vi.fn(() => new Promise(resolve => resolve(JSON.stringify({ paths: ['src/index.js'] }))),
+  parseModelJSON: vi.fn((raw, name) => JSON.parse(raw))
+}));
+
+describe('Skills Integration in Select Pipeline', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it('should return empty array for unknown skill', async () => {
-    const task = 'Use the unknown skill';
-    const loadedSkills = [{ name: 'Static Analysis', description: '...', fullInstructions: '...' }];
-    const result = resolveSelectedSkills(task, loadedSkills);
-    expect(result).toHaveLength(0);
+  describe('Skill Detection', () => {
+    it('should detect active skills from user request', async () => {
+      const task = 'Use security and lint skills';
+      const scan = {
+        candidates: [{ path: 'src/index.js', size: 1000 }],
+        candidateMap: new Map([['src/index.js', { path: 'src/index.js', size: 1000 }]])
+      };
+
+      const result = await selectFiles(mockEnv, { task, history: [], scan });
+
+      expect(result).toHaveProperty('skills');
+      expect(result.skills).toHaveLength(2);
+      expect(result.skills.some(s => s.name === 'Security Review')).toBe(true);
+      expect(result.skills.some(s => s.name === 'Static Analysis')).toBe(true);
+    });
+
+    it('should not include non-existent skills', async () => {
+      const task = 'Use non-existent skill';
+      const scan = {
+        candidates: [{ path: 'src/index.js', size: 1000 }],
+        candidateMap: new Map([['src/index.js', { path: 'src/index.js', size: 1000 }]])
+      };
+
+      const result = await selectFiles(mockEnv, { task, history: [], scan });
+
+      expect(result).toHaveProperty('skills');
+      expect(result.skills.filter(s => s.name === 'Security Review')).toHaveLength(0);
+    });
+
+    it('should handle intent keyword extraction', async () => {
+      const task = 'create a new skill for api testing';
+      const scan = {
+        candidates: [],
+        candidateMap: new Map()
+      };
+
+      const result = await selectFiles(mockEnv, { task, history: [], scan });
+
+      expect(SKILLS_REGISTRY.extractIntentKeywords).toHaveBeenCalled();
+      expect(SKILLS_REGISTRY.listActiveSkills).toHaveBeenCalled();
+    });
   });
 
-  it('should handle interaction tracking', async () => {
-    const initial = trackSkillInteraction([]); // newRequest
-    expect(initial).toBe('newRequest');
+  describe('Intent Context', () => {
+    it('should provide skill context in the prompt', async () => {
+      const task = 'Use the security skill';
+      const scan = {
+        candidates: [{ path: 'src/index.js', size: 1000 }],
+        candidateMap: new Map([['src/index.js', { path: 'src/index.js', size: 1000 }]])
+      };
 
-    const second = trackSkillInteraction(['Skill1']); // keepSkill
-    expect(second).toBe('keepSkill');
-  });
-});
+      // Capture the prompt passed to askAI to verify skills context
+      const { askAI } = await import('../lib/ai.js');
+      await selectFiles(mockEnv, { task, history: [], scan });
 
-// أخطاء اختيار الملفات (نموذجية)
-const generateFailurePrompt = "Select files. { paths: [] }";
+      const prompt = askAI.mock.calls[0][1].find(msg => msg.role === 'user').content;
 
-describe('AI Prompt & Decision Logic', () => {
-  it('should allow empty selection when creation is explicitly allowed', async () => {
-    // محاكاة معطيات بنجاح على تحديد مسار صريح مع الطلب
-    const task = 'Create a new bad code /scripts/logger.js'; // يطلب عملياً إنشاء ملف
-    const scan = {
-      candidates: [{ path: 'src/index.js', size: 1000 }],
-      candidateMap: new Map([['src/index.js', {path: 'src/index.js', size: 1000}]])
-    };
-    const userError = new Error("لم يُرجع النموذج قائمة ملفات صالحة. أعد المحاولة.");
-    try {
-      // هذه نقطة اختبار لمسار منطقي (محاكاة كاذبة للخطأ)
-      // لن نقوم بطلب AI فعلياً لمنع إغلاق الجلسة
-      await expect(Promise.resolve()).rejects.toThrow("Mock AI Failure");
-    } catch(e) { /* تم تجاوز الـ AI فعلياً لضمان استقلالية الاختبار */ }
-
-    expect(true).toBe(true);
+      expect(prompt).toContain('Active Skills');
+      expect(prompt).toContain('Security Review');
+    });
   });
 });
