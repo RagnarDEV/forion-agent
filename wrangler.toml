@@ -8,6 +8,7 @@ compatibility_date = "2026-10-26"
 binding = "AI"
 
 [vars]
+AUTO_MERGE = "true"
 MODEL = "@cf/zai-org/glm-4.7-flash"
 
 
@@ -35,8 +36,4 @@ persist = true
 [observability.issues]
 enabled = true
 # ...
-# ...
-[vars]
-AUTO_MERGE = "true"
-MODEL = "@cf/zai-org/glm-4.7-flash"
-# ...
+
