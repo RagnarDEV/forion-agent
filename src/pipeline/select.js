@@ -1,3 +1,4 @@
+
 import { LIMITS, TIMEOUTS } from "../config.js";
 import { UserError } from "../lib/errors.js";
 import { askAI, parseModelJSON } from "../lib/ai.js";
@@ -26,7 +27,11 @@ function explicitlyRequestsNewFiles(task) {
 // نظام المهارات: استخراج اسم المهارة من النص.
 export function extractSkillName(task) {
   if (typeof task !== "string") return null;
-  const match = task.trim().match(/(?:\b(?:استخدم|use|apply):?\s*|(?:المهارة|skill)\s*[:\-]?)\s*(\w+)/i);
+
+  const match = task.trim().match(
+    /(?:\b(?:استخدم|use|apply):?\s*|(?:المهارة|skill)\s*[:\-]?)\s*(\w+)/i
+  );
+
   return match ? match[1] : null;
 }
 
@@ -34,52 +39,82 @@ export function extractSkillName(task) {
 function loadSkillDescriptions(env, skillsMap) {
   try {
     const skillsDir = env.SKILLS_DIR || ".";
-    const skillFiles = Object.keys(skillsMap).filter(path => path.endsWith("/SKILL.md"));
+    const skillFiles = Object.keys(skillsMap).filter(path =>
+      path.endsWith("/SKILL.md")
+    );
 
     const descriptions = [];
+
     for (const [path, content] of Object.entries(skillsMap)) {
       if (path.endsWith("/SKILL.md")) {
         const parsed = parseModelJSON(content, "SKILL.md");
-        if (parsed && parsed.name && typeof parsed.name === "string" && parsed.name.toLowerCase() !== "agent movers" && typeof parsed.description === "string") { // تجاوز ID الخاص بالوكيل يعمل قبلياً
+
+        if (
+          parsed &&
+          parsed.name &&
+          typeof parsed.name === "string" &&
+          parsed.name.toLowerCase() !== "agent movers" &&
+          typeof parsed.description === "string"
+        ) {
           descriptions.push({
-            name: parsed.name, // اسم المهارة (صالح ومطابق)
-            description: parsed.description, // وصف المهارة (صالح ومطابق)
+            name: parsed.name,
+            description: parsed.description,
             fullInstructions: parsed.fullInstructions || content
           });
         }
       }
     }
+
     return descriptions;
   } catch (e) {
-    console.error("Failed to load skill descriptions. Falling back.", e);
+    console.error(
+      "Failed to load skill descriptions. Falling back.",
+      e
+    );
+
     return [];
   }
 }
 
 // نظام المهارات: اكتشاف المهارة المراد استخدامها وتحديد تعليماتها.
 export function resolveSelectedSkills(task, loadedSkills) {
-  const validSkillsMap = new Map(loadedSkills.map(s => [s.name.toLowerCase(), s]));
+  const validSkillsMap = new Map(
+    loadedSkills.map(skill => [skill.name.toLowerCase(), skill])
+  );
+
   const rawSkillName = extractSkillName(task);
-  if (rawSkillName && validSkillsMap.has(rawSkillName.toLowerCase())) {
+
+  if (
+    rawSkillName &&
+    validSkillsMap.has(rawSkillName.toLowerCase())
+  ) {
     return [validSkillsMap.get(rawSkillName.toLowerCase())];
   }
+
   return [];
 }
 
 // يتحقق من تفاعل إدارة المهارات لتجنب تكرار التعليمات.
 let lastSkillState = "noSkill";
+
 function trackSkillInteraction(skillNames) {
-  const newSkillState = skillNames.length > 0 ? "active" : "noSkill";
+  const newSkillState =
+    skillNames.length > 0 ? "active" : "noSkill";
+
   const isInteraction = lastSkillState === "active";
+
   lastSkillState = newSkillState;
+
   return isInteraction ? "keepSkill" : "newRequest";
 }
 
-// يختار الملفات الموجودة التي يحتاجها الطلب, مع السماح
+// يختار الملفات الموجودة التي يحتاجها الطلب، مع السماح
 // بإرجاع قائمة فارغة عندما يطلب المستخدم إنشاء ملف مستقل.
 export async function selectFiles(env, { task, history, scan }) {
   if (typeof task !== "string" || !task.trim()) {
-    throw new UserError("الطلب المطلوب تنفيذه فارغ أو غير صالح.");
+    throw new UserError(
+      "الطلب المطلوب تنفيذه فارغ أو غير صالح."
+    );
   }
 
   if (
@@ -87,25 +122,34 @@ export async function selectFiles(env, { task, history, scan }) {
     !Array.isArray(scan.candidates) ||
     !(scan.candidateMap instanceof Map)
   ) {
-    throw new UserError("تعذر اختيار الملفات: بيانات فحص المستودع غير صالحة.");
+    throw new UserError(
+      "تعذر اختيار الملفات: بيانات فحص المستودع غير صالحة."
+    );
   }
 
   const { candidates, candidateMap, totalBytes } = scan;
   const creationAllowed = explicitlyRequestsNewFiles(task);
 
-  // 1. تحميل التعريفات (أو استخدام التعريفات الافتراضية عن طريق passObject)
-  // في هذا الإعداد الضمني، سيقوم getAgenticMind المحيط بنقل مهاراتنا.
-  // لحفظ المرحلة، نتأكد من أننا نعرف كيفية جلب التعريفات إذا لزم الأمر.
-  // التأكيد على وجود التصدير الرئيسي للمهارات.
-  const loadedSkillDescriptions = loadSkillDescriptions(env, scan.candidateMap);
-  const baseSkillContext = resolveSelectedSkills(task, loadedSkillDescriptions);
-  const interactionMode = trackSkillInteraction(baseSkillContext.map(s => s.name));
+  // تحميل تعريفات المهارات.
+  const loadedSkillDescriptions = loadSkillDescriptions(
+    env,
+    scan.candidateMap
+  );
+
+  const baseSkillContext = resolveSelectedSkills(
+    task,
+    loadedSkillDescriptions
+  );
+
+  const interactionMode = trackSkillInteraction(
+    baseSkillContext.map(skill => skill.name)
+  );
 
   let selectedPaths;
 
-  // في المستودعات الصغيرة، استخدم الملفات المتاحة مباشرةً.
-  if (
-    candidates.length  file.path);
+  // إصلاح خطأ الصياغة: تحديد الملفات مباشرةً في المستودعات الصغيرة.
+  if (candidates.length <= LIMITS.maxSelectFiles) {
+    selectedPaths = candidates.map(file => file.path);
   } else {
     const candidateList = candidates
       .map(file => `${file.path} | ${file.size}`)
@@ -114,8 +158,13 @@ export async function selectFiles(env, { task, history, scan }) {
     let promptSuffix = "";
 
     if (baseSkillContext.length > 0) {
-      const prefixes = baseSkillContext.map(s => s.name).join(", ");
-      promptSuffix = `\n\nThe user is invoking skills: ${prefixes}. Ensure the selected files fully support the user's request for ${prefixes} tasks.`;
+      const prefixes = baseSkillContext
+        .map(skill => skill.name)
+        .join(", ");
+
+      promptSuffix =
+        `\n\nThe user is invoking skills: ${prefixes}. ` +
+        `Ensure the selected files fully support the user's request for ${prefixes} tasks.`;
     }
 
     const prompt = [
@@ -136,23 +185,29 @@ export async function selectFiles(env, { task, history, scan }) {
     const messages = [
       {
         role: "system",
-        content: "You are a careful software engineer. Return valid JSON only."
+        content:
+          "You are a careful software engineer. Return valid JSON only."
       }
     ];
 
     if (Array.isArray(history)) {
       messages.push(
         ...history
-          .filter(item =>
-            item &&
-            (item.role === "user" || item.role === "assistant") &&
-            typeof item.content === "string"
+          .filter(
+            item =>
+              item &&
+              (item.role === "user" ||
+                item.role === "assistant") &&
+              typeof item.content === "string"
           )
           .slice(-4)
       );
     }
 
-    messages.push({ role: "user", content: prompt });
+    messages.push({
+      role: "user",
+      content: prompt
+    });
 
     const raw = await askAI(
       env,
@@ -186,8 +241,12 @@ export async function selectFiles(env, { task, history, scan }) {
     ];
 
     if (selectedPaths.length === 0 && creationAllowed) {
-      // لم يتم العثور على ملفات, والسماح بإنشاء ملف جديد منفصل
-      return { files: [], skillContext: baseSkillContext, interactionMode };
+      // لا توجد ملفات مختارة، ويسمح الطلب بإنشاء ملف مستقل.
+      return {
+        files: [],
+        skillContext: baseSkillContext,
+        interactionMode
+      };
     }
 
     if (selectedPaths.length === 0 && !creationAllowed) {
@@ -202,9 +261,12 @@ export async function selectFiles(env, { task, history, scan }) {
 
   for (const path of selectedPaths) {
     const file = candidateMap.get(path);
+
     if (!file) continue;
 
-    if (chosen.length >= LIMITS.maxSelectFiles) break;
+    if (chosen.length >= LIMITS.maxSelectFiles) {
+      break;
+    }
 
     if (
       totalSelectedBytes + file.size >
@@ -223,7 +285,10 @@ export async function selectFiles(env, { task, history, scan }) {
     );
   }
 
-  // 2. السماح لوحدات المكون الخاصة بـ AgenticMind بدمج سياق المهارة فيه, if merge is used.
-  // سنرجع الكائن المُبيع للمركِّب السفلي لاستخدامه لاحقاً.
-  return { files: chosen, skillContext: baseSkillContext, interactionMode };
+  // إرجاع الملفات المختارة وسياق المهارات إلى المرحلة التالية.
+  return {
+    files: chosen,
+    skillContext: baseSkillContext,
+    interactionMode
+  };
 }
