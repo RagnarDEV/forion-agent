@@ -12,16 +12,31 @@ export async function runPipeline(env, input, io) {
   const { repo, task, history } = input;
   const encodedRepo = encodeRepo(repo);
   const creationAllowed = explicitlyRequestsNewFiles(task);
-  const stage = (name, message) => io.emit({ type: "stage", stage: name, message });
+
+  const stage = (name, message) =>
+    io.emit({ type: "stage", stage: name, message });
 
   stage("scan", "جارٍ فحص بنية المستودع…");
-  const scan = await scanRepository(env, repo, encodedRepo, { allowEmpty: creationAllowed });
+
+  const scan = await scanRepository(
+    env,
+    repo,
+    encodedRepo,
+    { allowEmpty: creationAllowed }
+  );
 
   stage("select", "جارٍ اختيار الملفات المناسبة…");
-  const selection = await selectFiles(env, { task, history, scan });
+
+  const selection = await selectFiles(env, {
+    task,
+    history,
+    scan
+  });
 
   if (!selection || !Array.isArray(selection.files)) {
-    throw new UserError("تعذر اختيار الملفات: نتيجة مرحلة الاختيار غير صالحة.");
+    throw new UserError(
+      "تعذر اختيار الملفات: نتيجة مرحلة الاختيار غير صالحة."
+    );
   }
 
   const chosen = selection.files;
@@ -35,17 +50,28 @@ export async function runPipeline(env, input, io) {
     };
   }
 
-  stage("read", chosen.length
-    ? "جارٍ قراءة " + chosen.length + " ملف…"
-    : "لا حاجة لقراءة ملفات موجودة لهذا الطلب.");
+  stage(
+    "read",
+    chosen.length
+      ? "جارٍ قراءة " + chosen.length + " ملف…"
+      : "لا حاجة لقراءة ملفات موجودة لهذا الطلب."
+  );
+
   const files = await readFiles(env, encodedRepo, chosen);
 
   const existingPaths = (scan.snapshot?.tree?.tree || [])
-    .filter(item => item.type === "blob")
-    .map(item => item.path);
+    .filter((item) => item.type === "blob")
+    .map((item) => item.path);
 
   stage("generate", "جارٍ تحليل الطلب وتوليد النتيجة…");
-  const outcome = await generateChanges(env, { task, history, files, existingPaths });
+
+  const outcome = await generateChanges(env, {
+    task,
+    history,
+    files,
+    existingPaths,
+    skillsContext: selection.skillsContext || ""
+  });
 
   if (outcome.changed.length === 0) {
     return {
@@ -57,10 +83,13 @@ export async function runPipeline(env, input, io) {
   }
 
   if (!io.alive()) {
-    throw new UserError("انقطع اتصال المتصفح قبل إنشاء الفرع، لذلك لم يُنشأ شيء. أعد المحاولة.");
+    throw new UserError(
+      "انقطع اتصال المتصفح قبل إنشاء الفرع، لذلك لم يُنشأ شيء. أعد المحاولة."
+    );
   }
 
   stage("publish", "جارٍ إنشاء الفرع وPull Request…");
+
   const published = await publishChanges(env, {
     encodedRepo,
     scan,
@@ -73,7 +102,7 @@ export async function runPipeline(env, input, io) {
     noChanges: false,
     summary: outcome.summary || published.oneLine,
     branch: published.branch,
-    files: outcome.changed.map(file => file.path),
+    files: outcome.changed.map((file) => file.path),
     url: published.url,
     autoMerge: published.autoMerge
   };
