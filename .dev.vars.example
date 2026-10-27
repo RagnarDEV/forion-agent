@@ -1,0 +1,6 @@
+# نسخة للتشغيل المحلي (wrangler dev): انسخها إلى .dev.vars واملأ القيم.
+# لا تُرفع .dev.vars إلى GitHub أبدًا.
+ADMIN_TOKEN=change-me-to-a-long-random-value
+GITHUB_TOKEN=github_pat_xxxxxxxxxxxxxxxx
+# اختياري: الدمج التلقائي (يتطلب Allow auto-merge في إعدادات المستودع)
+# AUTO_MERGE=true
