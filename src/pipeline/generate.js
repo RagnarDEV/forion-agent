@@ -1,4 +1,3 @@
-
 import { LIMITS, TIMEOUTS } from "../config.js";
 import { UserError } from "../lib/errors.js";
 import { askAI, parseModelJSON } from "../lib/ai.js";
@@ -9,7 +8,7 @@ const utf8Bytes = (text) => new TextEncoder().encode(text).length;
 
 const SAFE_EXTENSIONS = new Set([
   "js", "mjs", "cjs", "ts", "tsx", "jsx", "html", "css", "json",
-  "md", "txt", "yml", "yaml", "toml", "robot"
+  "md", "txt", "yml", "yaml", "toml", "lg"
 ]);
 
 function explicitlyRequestsNewFiles(task) {
@@ -99,13 +98,13 @@ export async function generateChanges(env, {
     ? "The user explicitly requested file creation. You may create new files."
     : "Do not create new files. Only modify exact existing paths supplied below.";
 
-  const schema =
+  const schema = 
     '{"summary":"text","files":[{"path":"repository-relative path","content":"complete file content"}]}';
+    
+    let stepsPrompt = 'Return ONLY valid JSON matching this schema. ' + schema + '. Modify only files necessary for the task. Return complete contents for every changed file.';
 
   const basePrompt = [
     "Implement the latest user request using the supplied repository files.",
-    "Return ONLY valid JSON matching this schema: " + schema,
-    "Modify only files necessary for the task. Return complete contents for every changed file.",
     creationRule,
     "Do not rename or delete files. Do not return unchanged files.",
     "New paths must pass safe text-file path rules and must not already exist in the repository.",
