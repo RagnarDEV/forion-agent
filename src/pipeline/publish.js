@@ -1,3 +1,4 @@
+
 import { UserError, errorMessage } from "../lib/errors.js";
 import { github } from "../lib/github.js";
 
@@ -14,35 +15,37 @@ async function enablePullRequestAutoMerge(env, pullRequestId) {
     throw new UserError("إعداد GITHUB_TOKEN غير موجود.");
   }
 
+  const query = `
+    mutation EnableAutoMerge(
+      $pullRequestId: ID!,
+      $mergeMethod: PullRequestMergeMethod!
+    ) {
+      enablePullRequestAutoMerge(input: {
+        pullRequestId: $pullRequestId,
+        mergeMethod: $mergeMethod
+      }) {
+        pullRequest {
+          number
+          url
+          autoMergeRequest {
+            enabledAt
+            mergeMethod
+          }
+        }
+      }
+    }
+  `;
+
   const response = await fetch("https://api.github.com/graphql", {
     method: "POST",
     headers: {
-      "Authorization": "Bearer " + token,
+      Authorization: "Bearer " + token,
       "Content-Type": "application/json",
-      "Accept": "application/vnd.github+json",
+      Accept: "application/vnd.github+json",
       "User-Agent": "forion-agent"
     },
     body: JSON.stringify({
-      query: `
-        mutation EnableAutoMerge(
-          $pullRequestId: ID!,
-          $mergeMethod: PullRequestMergeMethod!
-        ) {
-          enablePullRequestAutoMerge(input: {
-            pullRequestId: $pullRequestId,
-            mergeMethod: $mergeMethod
-          }) {
-            pullRequest {
-              number
-              url
-              autoMergeRequest {
-                enabledAt
-                mergeMethod
-              }
-            }
-          }
-        }
-      `,
+      query,
       variables: {
         pullRequestId,
         mergeMethod: "SQUASH"
@@ -99,7 +102,7 @@ export async function publishChanges(
     throw new UserError("لا توجد تغييرات صالحة للنشر.");
   }
 
-  // التأكد من أن الفرع الأساسي لم يتغير أثناء عمل الوكيل.
+  // التحقق من أن الفرع الأساسي لم يتغير أثناء عمل الوكيل.
   const latest = await github(
     env,
     "/repos/" + encodedRepo +
@@ -117,7 +120,7 @@ export async function publishChanges(
     .trim()
     .slice(0, 120);
 
-  // إنشاء شجرة التغييرات.
+  // إنشاء شجرة الملفات المعدلة.
   const tree = await github(
     env,
     "/repos/" + encodedRepo + "/git/trees",
@@ -135,7 +138,7 @@ export async function publishChanges(
     }
   );
 
-  // إنشاء commit.
+  // إنشاء commit جديد.
   const commit = await github(
     env,
     "/repos/" + encodedRepo + "/git/commits",
@@ -149,10 +152,12 @@ export async function publishChanges(
     }
   );
 
-  // إنشاء فرع مستقل.
+  // إنشاء فرع مستقل للتغييرات.
   const branch =
     "forion-agent-" +
-    new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14) +
+    new Date().toISOString()
+      .replace(/[-:.TZ]/g, "")
+      .slice(0, 14) +
     "-" +
     crypto.randomUUID().slice(0, 8);
 
@@ -185,12 +190,14 @@ export async function publishChanges(
             "## ملخص التعديلات\n" +
             String(summary || oneLine).slice(0, 4000) +
             "\n\n## الملفات المعدلة\n" +
-            changed.map(file => "- `" + file.path + "`").join("\n") +
+            changed
+              .map(file => "- `" + file.path + "`")
+              .join("\n") +
             "\n\n---\n" +
             (
               isAutoMergeEnabled(env)
-                ? "سيُطلب من GitHub تفعيل الدمج التلقائي بعد اجتياز الشروط المطلوبة."
-                : "الدمج التلقائي غير مفعّل؛ راجع التغييرات وادمجها يدويًا."
+                ? "سيطلب الوكيل تفعيل الدمج التلقائي عبر GitHub."
+                : "الدمج التلقائي معطل في إعدادات الوكيل."
             )
         })
       }
@@ -203,7 +210,7 @@ export async function publishChanges(
     );
   }
 
-  // لا تفعّل الدمج التلقائي إلا عند ضبط AUTO_MERGE على true.
+  // لا نفعّل الدمج التلقائي إلا إذا طلبه الإعداد صراحةً.
   let autoMerge = {
     enabled: false,
     reason: "AUTO_MERGE غير مفعّل."
@@ -213,7 +220,7 @@ export async function publishChanges(
     if (!pr.node_id) {
       autoMerge = {
         enabled: false,
-        reason: "لم يُرجع GitHub معرّف Pull Request المطلوب."
+        reason: "لم يُرجع GitHub معرّف Pull Request."
       };
     } else {
       try {
@@ -222,7 +229,7 @@ export async function publishChanges(
           pr.node_id
         );
       } catch (error) {
-        // يبقى Pull Request موجودًا حتى لو تعذّر تفعيل الدمج.
+        // يبقى طلب الدمج موجودًا حتى لو فشل تفعيل الدمج التلقائي.
         autoMerge = {
           enabled: false,
           reason: errorMessage(error)
