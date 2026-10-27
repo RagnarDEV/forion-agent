@@ -15,7 +15,7 @@ export async function scanRepository(env, repo, encodedRepo) {
     throw error;
   }
 
-  if (!meta.permissions || !(meta.permissions.push || meta.permissions.admin)) {
+  if (!meta?.permissions?.push || !meta?.permissions?.admin) {
     throw new UserError("لا يملك GITHUB_TOKEN صلاحية الكتابة على هذا المستودع.");
   }
 
@@ -27,18 +27,7 @@ export async function scanRepository(env, repo, encodedRepo) {
     item.type === "blob" &&
     isSafeTextPath(item.path) &&
     (item.size || 0) > 0 &&
-    (item.size || 0) <= LIMITS.maxFileBytes
-  );
-
-  if (!usable.length) {
-    throw new UserError(
-      "لم أجد ملفات نصية مناسبة للتحليل (الملفات الأكبر من " +
-      Math.round(LIMITS.maxFileBytes / 1000) + "KB مستثناة)."
-    );
-  }
-
-  const candidates = usable
-    .map(item => ({ path: item.path, sha: item.sha, size: item.size || 0 }))
+    (item.size || 0)  ({ path: item.path, sha: item.sha, size: item.size || 0 }))
     .sort(rankCandidates)
     .slice(0, LIMITS.maxCandidates);
 
