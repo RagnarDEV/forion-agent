@@ -6,5 +6,6 @@ export const state = {
   lastTask: "",
   repos: [],
   repo: "",
-  model: ""
+  model: "",
+  autoMerge: false
 };

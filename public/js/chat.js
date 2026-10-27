@@ -133,6 +133,18 @@ function addActions(body, text) {
   body.appendChild(h("div", { class: "actions" }, copy));
 }
 
+// سطر حالة الدمج التلقائي داخل بطاقة النتيجة (يظهر فقط عند تفعيل الميزة).
+function mergeStatus(autoMerge) {
+  if (!autoMerge || !state.autoMerge) return null;
+
+  if (autoMerge.enabled) {
+    return "تم طلب الدمج التلقائي (" + (autoMerge.mergeMethod || "SQUASH") +
+      "): سيُدمج الـ Pull Request عند نجاح الفحوصات المطلوبة.";
+  }
+
+  return autoMerge.reason ? "لم يُفعَّل الدمج التلقائي: " + autoMerge.reason : null;
+}
+
 export function showResult(result) {
   const summary = String(result.summary || "").trim() || "اكتمل التنفيذ.";
   const message = addMessage("assistant", summary, { stick: true });
@@ -151,6 +163,9 @@ export function showResult(result) {
     h("div", { class: "result-head" }, icon("pr"), h("span", { text: "تم إنشاء Pull Request" })),
     chips
   );
+
+  const note = mergeStatus(result.autoMerge);
+  if (note) card.appendChild(h("p", { class: "ai-note", text: note }));
 
   if (typeof result.url === "string" && /^https:\/\/github\.com\//.test(result.url)) {
     card.appendChild(h("a", {

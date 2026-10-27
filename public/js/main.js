@@ -48,6 +48,15 @@ function showConnection(count) {
   $("connModel").textContent = (state.model || "").split("/").pop();
 }
 
+// تنبيه صريح عندما يكون الدمج التلقائي مفعّلًا حتى لا يُفاجَأ المستخدم.
+function renderMergeNote() {
+  const note = $("mergeNote");
+  note.hidden = !state.autoMerge;
+  note.textContent = state.autoMerge
+    ? "الدمج التلقائي مفعّل: يطلب الوكيل من GitHub دمج الـ Pull Request تلقائيًا عند نجاح الفحوصات المطلوبة."
+    : "";
+}
+
 function setOnline(online) {
   if (!state.token) return;
   $("conn").classList.toggle("offline", !online);
@@ -62,7 +71,9 @@ async function loadRepos() {
   if (!repos.length) throw new Error("لا توجد مستودعات بصلاحية الكتابة لهذا الرمز.");
 
   state.model = typeof data.model === "string" ? data.model : "";
+  state.autoMerge = data.autoMerge === true;
   setRepos(repos);
+  renderMergeNote();
   return repos.length;
 }
 
@@ -149,12 +160,14 @@ async function logout() {
   state.history = [];
   state.repos = [];
   state.repo = "";
+  state.autoMerge = false;
 
   $("token").value = "";
   $("token").type = "password";
   $("toggleToken").firstElementChild.innerHTML = ICONS.eye;
   $("logout").hidden = true;
   $("conn").hidden = true;
+  renderMergeNote();
   setBanner($("status"), "");
 
   await swap($("workspace"), $("login"));
