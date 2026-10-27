@@ -7,6 +7,11 @@ import { isSafeTextPath } from "../lib/paths.js";
 const normalizeEol = (text) => text.replace(/\r\n/g, "\n");
 const utf8Bytes = (text) => new TextEncoder().encode(text).length;
 
+const SAFE_EXTENSIONS = new Set([
+  "js", "mjs", "cjs", "ts", "tsx", "jsx", "html", "css", "json",
+  "md", "txt", "yml", "yaml", "toml", "robot"
+]);
+
 function explicitlyRequestsNewFiles(task) {
   if (typeof task !== "string") return false;
 
@@ -91,7 +96,7 @@ export async function generateChanges(env, {
   const fileContext = JSON.stringify(files);
 
   const creationRule = creationAllowed
-    ? "The user explicitly requested file creation. You may create new files only at safe, genuinely new paths. Never overwrite an existing repository path that was not supplied below."
+    ? "The user explicitly requested file creation. You may create new files."
     : "Do not create new files. Only modify exact existing paths supplied below.";
 
   const schema =
@@ -191,9 +196,16 @@ export async function generateChanges(env, {
       );
     }
 
+    const ext = path.split('.').pop().toLowerCase();
+    if (!SAFE_EXTENSIONS.has(ext)) {
+      throw new UserError(
+        "رفض التوليد: لا يتم التعامل مع الامتداد '" + ext + "'."
+      );
+    }
+
     if (seen.has(path)) {
       throw new UserError(
-        "رفض التوليد: تكرر الملف نفسه في الاستجابة: " + path
+        "رفض التوليد: تكرار الملف نفسه في الاستجابة: " + path
       );
     }
 
@@ -264,5 +276,4 @@ export async function generateChanges(env, {
     summary: parsed.summary,
     changed
   };
-}
 }
