@@ -2,7 +2,12 @@ import { GITHUB_API } from "../config.js";
 import { UserError } from "./errors.js";
 import { cleanSecret } from "./security.js";
 
-export const encodeRepo = repo => repo.split("/").map(encodeURIComponent).join("/");
+const encodeSegments = value => value.split("/").map(encodeURIComponent).join("/");
+
+export const encodeRepo = encodeSegments;
+
+// أسماء الفروع قد تحتوي "/" (مثل feature/x) ويجب أن تبقى كما هي في مسار المرجع.
+export const encodeRef = encodeSegments;
 
 export async function github(env, path, options = {}) {
   const response = await fetch(GITHUB_API + path, {
@@ -64,7 +69,7 @@ export async function listRepos(env) {
 export async function getTree(env, repo, branch) {
   const encodedRepo = encodeRepo(repo);
   const ref = await github(env, "/repos/" + encodedRepo +
-    "/git/ref/heads/" + encodeURIComponent(branch));
+    "/git/ref/heads/" + encodeRef(branch));
   const commit = await github(env, "/repos/" + encodedRepo +
     "/git/commits/" + ref.object.sha);
   const tree = await github(env, "/repos/" + encodedRepo +
