@@ -4,7 +4,8 @@ import { github, getTree } from "../lib/github.js";
 import { isSafeTextPath, rankCandidates } from "../lib/paths.js";
 
 // يتحقق من المستودع والصلاحيات ويبني قائمة الملفات المرشحة.
-export async function scanRepository(env, repo, encodedRepo) {
+// allowEmpty: يُسمح بعدم وجود ملفات نصية (مستودع جديد) عند طلب إنشاء ملفات.
+export async function scanRepository(env, repo, encodedRepo, { allowEmpty = false } = {}) {
   let meta;
   try {
     meta = await github(env, "/repos/" + encodedRepo);
@@ -30,7 +31,7 @@ export async function scanRepository(env, repo, encodedRepo) {
     (item.size || 0) <= LIMITS.maxFileBytes
   );
 
-  if (!usable.length) {
+  if (!usable.length && !allowEmpty) {
     throw new UserError(
       "لم أجد ملفات نصية مناسبة للتحليل (الملفات الأكبر من " +
       Math.round(LIMITS.maxFileBytes / 1000) + "KB مستثناة)."

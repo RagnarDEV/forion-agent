@@ -1,7 +1,7 @@
 // قواعد اختيار الملفات النصية الآمنة للقراءة والتعديل.
 
 const SOURCE_EXT = /\.(js|mjs|cjs|ts|tsx|jsx|html|css|py|go|rs|java|php|sh)$/i;
-const TEXT_EXT = /\.(js|mjs|cjs|ts|tsx|jsx|html|css|json|md|txt|yml|yaml|toml|py|go|rs|java|php|sql|sh|xml|svg|robot)(?:\.\w+)?$/i;
+const TEXT_EXT = /\.(js|mjs|cjs|ts|tsx|jsx|html|css|json|md|txt|yml|yaml|toml|py|go|rs|java|php|sql|sh|xml|svg)$/i;
 
 export function isSafeTextPath(path) {
   if (typeof path !== "string" || !path || path.length > 240) return false;

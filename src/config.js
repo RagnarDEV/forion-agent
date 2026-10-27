@@ -2,7 +2,6 @@
 
 export const GITHUB_API = "https://api.github.com";
 export const DEFAULT_MODEL = "@cf/zai-org/glm-4.7-flash";
-export const DEFAULT_BRANCH = "master";
 
 export const LIMITS = Object.freeze({
   maxSelectFiles: 8,
@@ -12,6 +11,7 @@ export const LIMITS = Object.freeze({
   maxTaskChars: 4000,
   maxHistoryItems: 6,
   maxHistoryChars: 1500,
+  maxNewFiles: 3,
   // يُرفض أي ملف يعود أصغر من هذه النسبة من أصله (حماية من الاقتطاع).
   minKeepRatio: 0.4
 });

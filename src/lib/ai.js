@@ -7,76 +7,48 @@ export function withTimeout(promise, ms, label) {
 
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => {
-      reject(
-        new UserError(
-          "انتهت مهلة " +
-            label +
-            " (" +
-            Math.round(ms / 1000) +
-            " ثانية). أعد المحاولة."
-        )
-      );
+      reject(new UserError(
+        "انتهت مهلة " + label + " (" + Math.round(ms / 1000) +
+        " ثانية). قلّل نطاق الطلب أو حدّد الملفات المطلوبة بالاسم ثم أعد المحاولة."
+      ));
     }, ms);
   });
 
-  return Promise.race([promise, timeout]).finally(() => {
-    clearTimeout(timer);
-  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 /**
- * يحلل استجابة النموذج.
- * يدعم كتل Markdown المفككة ويوفر آلية تجميع آمنة.
+ * يحلل استجابة النموذج إلى كائن JSON.
+ * يزيل أسوار Markdown الخارجية ويقتطع ما بين أول "{" وآخر "}" فقط.
+ * لا يعدّل محتوى النصوص أبدًا: الشيفرة داخل القيم (HTML، أقواس < >، تعليقات) تبقى كما هي.
  */
 export function parseModelJSON(text, what = "التوليد") {
   if (typeof text !== "string" || !text.trim()) {
+    throw new UserError("استجابة النموذج (" + what + ") فارغة أو ليست نصًا صالحًا.");
+  }
+
+  let cleaned = text.trim();
+
+  const fenced = cleaned.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenced) cleaned = fenced[1].trim();
+
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start >= 0 && end > start) cleaned = cleaned.slice(start, end + 1);
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
     throw new UserError(
-      "استجابة النموذج (" + what + ") فارغة أو ليست نصًا صالحًا."
+      "استجابة النموذج (" + what + ") ليست JSON مكتملًا وصالحًا. " +
+      "لم يتم نشر أي تغييرات. قلّل نطاق الطلب ثم أعد المحاولة."
     );
-  } else {
-    let cleaned = text.trim();
-
-    // السماح بكتلة Markdown خارجية كاملة
-    const fenced = cleaned.match(
-      /^```(?:json)?\s*([\s\S]*?)\s*```$/i
-    );
-
-    if (fenced) {
-      cleaned = fenced[1].trim();
-    }
-
-    // تجميع كتل Markdown المفككة
-    const recombined = cleaned.replace(/```[^`]*```/g, (match) => {
-      return match.replace(/^```[\s\S]*?```$/i, "$1").replace(/^```json\s*|[\s\n]*```$/g, "").trim();
-    });
-
-    // تطبيق القواعد الأساسية للتحليل (بدون إعادة تسلسل HTML)
-    const simplified = recombined.replace(/\s*<[bdi][^>]*>[^<]*<\/\1>/g, "");
-    let finalText = simplified.replace(/<[^>]*>/g, "").trim();
-
-    // إزالة التعليقات البرمجية الأمامية
-    const commentRegex = /^(?:\/\/|#).*$/gm;
-    finalText = finalText.replace(commentRegex, "");
-
-    let parsed;
-
-    try {
-      parsed = JSON.parse(finalText);
-    } catch {
-      throw new UserError(
-        "استجابة النموذج (" +
-          what +
-          ") ليست JSON مكتملًا وصالحًا. لم يتم نشر أي تغييرات. أعد المحاولة."
-      );
-    }
-
-    return parsed;
   }
 }
 
 /**
  * يستخرج النص من أشكال الاستجابة الشائعة في Workers AI.
- * يرفض القيم غير المعروفة بدل تمرير undefined إلى المراحل التالية.
+ * يُرجع null إن لم يجد نصًا بدل تمرير undefined إلى المراحل التالية.
  */
 function extractResponseText(result) {
   const candidates = [
@@ -95,25 +67,16 @@ function extractResponseText(result) {
     }
 
     if (Array.isArray(candidate)) {
-      const parts = candidate
-        .map((part) => {
-          if (typeof part === "string") return part;
-          if (typeof part?.text === "string") return part.text;
-          return "";
-        })
+      const joined = candidate
+        .map(part => typeof part === "string" ? part :
+          typeof part?.text === "string" ? part.text : "")
         .join("");
 
-      if (parts.trim()) {
-        return parts.trim();
-      }
+      if (joined.trim()) return joined.trim();
     }
 
-    if (
-      candidate &&
-      typeof candidate === "object" &&
-      typeof candidate.text === "string" &&
-      candidate.text.trim()
-    ) {
+    if (candidate && typeof candidate === "object" &&
+        typeof candidate.text === "string" && candidate.text.trim()) {
       return candidate.text.trim();
     }
   }
@@ -124,73 +87,47 @@ function extractResponseText(result) {
 /**
  * يستدعي Cloudflare Workers AI ويعيد النص الناتج.
  */
-export async function askAI(
-  env,
-  messages,
-  maxTokens,
-  timeoutMs,
-  label
-) {
+export async function askAI(env, messages, maxTokens, timeoutMs, label) {
   const model = cleanSecret(env.MODEL) || DEFAULT_MODEL;
 
   if (!env.AI || typeof env.AI.run !== "function") {
-    throw new UserError(
-      "خدمة Workers AI غير متاحة. تحقق من ربط AI في إعدادات Worker."
-    );
+    throw new UserError("خدمة Workers AI غير متاحة. تحقق من ربط AI في إعدادات Worker.");
   }
 
   if (!Array.isArray(messages) || messages.length === 0) {
-    throw new UserError(
-      "تعذر إرسال الطلب إلى النموذج: قائمة الرسائل فارغة أو غير صالحة."
-    );
+    throw new UserError("تعذر إرسال الطلب إلى النموذج: قائمة الرسائل فارغة أو غير صالحة.");
   }
 
   let result;
 
   try {
-    result = await withTimeout(
-      env.AI.run(model, {
-        messages,
-        max_tokens: maxTokens,
-        chat_template_kwargs: {
-          enable_thinking: false
-        },
-        reasoning_effort: "low"
-      }),
-      timeoutMs,
-      label
-    );
+    result = await withTimeout(env.AI.run(model, {
+      messages,
+      max_tokens: maxTokens,
+      chat_template_kwargs: { enable_thinking: false },
+      reasoning_effort: "low"
+    }), timeoutMs, label);
   } catch (error) {
-    if (error instanceof UserError) {
-      throw error;
-    }
+    if (error instanceof UserError) throw error;
 
     throw new UserError(
-      "فشل استدعاء Cloudflare Workers AI (" +
-        model +
-        "): " +
-        String(error?.message || error).slice(0, 500)
+      "فشل استدعاء Cloudflare Workers AI (" + model + "): " +
+      String(error?.message || error).slice(0, 500)
     );
   }
 
-  const responseText = extractResponseText(result);
+  const text = extractResponseText(result);
 
-  if (responseText === null) {
-    const keys =
-      result && typeof result === "object"
-        ? Object.keys(result).join(", ")
-        : typeof result;
+  if (text === null) {
+    const keys = result && typeof result === "object"
+      ? Object.keys(result).join(", ")
+      : typeof result;
 
     throw new UserError(
-      "لم يُرجع Workers AI نصًا صالحًا. النموذج: " +
-        model +
-        ". نوع الاستجابة: " +
-        typeof result +
-        ". مفاتيح الاستجابة: " +
-        (keys || "لا توجد") +
-        "."
+      "لم يُرجع Workers AI نصًا صالحًا. النموذج: " + model +
+      ". مفاتيح الاستجابة: " + (keys || "لا توجد") + "."
     );
   }
 
-  return responseText;
+  return text;
 }
