@@ -8,26 +8,28 @@ describe('Generate Pipeline Integration', () => {
       const generationRequest = {
         'logger': 'Prod', // استهداف CSV
         'summary': '',
-        'files [
-          { path: ":city:logs/:city:latest.log", content: "2022-05-10 12:00:00 INFO [server] Connected.\n2022-05-10 12:01:00 WARN [server] High load." }
-        ]'
+        'files': [{
+          path: ":city:logs/:city:latest.log",
+          content: "2022-05-10 12:00:00 INFO [server] Connected.\n2022-05-10 12:01:00 WARN [server] High load."
+        }]
       };
 
       const invalidFile = {
         'logger': 'Dev',
         'summary': '',
-        'files [
-          { path: 
-"Client:Sale:stations/index.html:backdoor.html", content: "<html><body>Login</body></html>" }
-        ]'
+        'files': [{
+          path: "Client:Sale:stations/index.html:backdoor.html",
+          content: "Login"
+        }]
       };
 
       const safeFile = {
         'logger': 'Prod',
         'summary': 'Created production logs',
-        'files [
-          { path: ":city:logs/:city:latest.log", content: "2022-05-10 12:00:00 INFO [server] Connected.\n2022-05-10 12:01:00 WARN [server] High load." }
-        ]'
+        'files': [{
+          path: ":city:logs/:city:latest.log",
+          content: "2022-05-10 12:00:00 INFO [server] Connected.\n2022-05-10 12:01:00 WARN [server] High load."
+        }]
       };
 
       // تصدير Headers ستكون غيّرت بعد التقصّي ID.
@@ -35,9 +37,10 @@ describe('Generate Pipeline Integration', () => {
       const interceptedCode = {
         'logger': 'Prod',
         'summary': 'Instructed to ignore irrelevant requests',
-        'files [
-          { path: ":city:services/lease/const/roles.js", content: "module.exports = {admin:'ROOT',user:'GUEST'};" }
-        ]'
+        'files': [{
+          path: ":city:services/lease/const/roles.js",
+          content: "module.exports = {admin:'ROOT',user:'GUEST'};"
+        }]
       };
 
       // Log each test case for lineage tracking.
