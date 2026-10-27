@@ -1,4 +1,5 @@
-import { LIMITS } from "../config.js";
+
+import { LIMITS } from "../../config.js";
 
 const PRIORITY_ORDER = [
   "security",
@@ -9,7 +10,7 @@ const PRIORITY_ORDER = [
 ];
 
 function getPriority(skill) {
-  const tags = Array.isArray(skill.tags) ? skill.tags : [];
+  const tags = Array.isArray(skill?.tags) ? skill.tags : [];
 
   const index = tags.findIndex((tag) =>
     PRIORITY_ORDER.includes(String(tag).toLowerCase())
@@ -23,20 +24,22 @@ function utf8Bytes(value) {
 }
 
 function renderSkill(skill) {
-  const tags = Array.isArray(skill.tags)
-    ? skill.tags.filter((tag) => typeof tag === "string").join(", ")
+  const tags = Array.isArray(skill?.tags)
+    ? skill.tags
+        .filter((tag) => typeof tag === "string")
+        .join(", ")
     : "";
 
   const instructions =
-    typeof skill.fullInstructions === "string" &&
+    typeof skill?.fullInstructions === "string" &&
     skill.fullInstructions.trim()
       ? skill.fullInstructions.trim()
       : "No detailed instructions loaded.";
 
   return [
-    `### Skill: ${skill.name || skill.id || "Unnamed skill"}`,
-    `ID: ${skill.id || ""}`,
-    `Description: ${skill.description || ""}`,
+    `### Skill: ${skill?.name || skill?.id || "Unnamed skill"}`,
+    `ID: ${skill?.id || ""}`,
+    `Description: ${skill?.description || ""}`,
     `Tags: ${tags}`,
     instructions,
     "---"
@@ -48,25 +51,35 @@ export function buildSkillsContext(skillsToLoad, originalTask) {
     return "";
   }
 
+  const configuredTotalBytes = Number(LIMITS?.maxTotalBytes);
+  const configuredNewFiles = Number(LIMITS?.maxNewFiles);
+
   const maxBytes = Math.max(
     1000,
     Math.min(
-      LIMITS.maxTotalBytes,
-      LIMITS.maxNewFiles * 5000
+      Number.isFinite(configuredTotalBytes) && configuredTotalBytes > 0
+        ? configuredTotalBytes
+        : 12000,
+      Number.isFinite(configuredNewFiles) && configuredNewFiles > 0
+        ? configuredNewFiles * 5000
+        : 12000
     )
   );
 
-  const orderedSkills = [...skillsToLoad].sort((a, b) => {
-    const priorityDifference = getPriority(a) - getPriority(b);
+  const orderedSkills = skillsToLoad
+    .filter((skill) => skill && typeof skill === "object")
+    .slice()
+    .sort((a, b) => {
+      const priorityDifference = getPriority(a) - getPriority(b);
 
-    if (priorityDifference !== 0) {
-      return priorityDifference;
-    }
+      if (priorityDifference !== 0) {
+        return priorityDifference;
+      }
 
-    return String(a.id || a.name || "").localeCompare(
-      String(b.id || b.name || "")
-    );
-  });
+      return String(a.id || a.name || "").localeCompare(
+        String(b.id || b.name || "")
+      );
+    });
 
   const header = [
     "ACTIVE SKILLS",
@@ -93,10 +106,12 @@ export function buildSkillsContext(skillsToLoad, originalTask) {
     return "";
   }
 
+  const taskText = String(originalTask || "").slice(0, 1000);
+
   return [
     header,
     ...included,
     "REQUIREMENTS BASED ON REQUEST:",
-    `Original request: ${String(originalTask || "").slice(0, 1000)}`
+    `Original request: ${taskText}`
   ].join("\n");
 }
