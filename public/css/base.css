@@ -117,7 +117,28 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; outline: n
   }
 }
 
-@media (max-width: 520px) {
-  .app { padding-left: 12px; padding-right: 12px; }
+@media (max-width: 480px) {
+  .app { padding-left: calc(12px + env(safe-area-inset-left)); padding-right: calc(12px + env(safe-area-inset-right)); }
+
+  .brand h1 { font-size: 18px; }
+
+  .topbar { gap: 8px; padding-inline: 8px 4px; }
+  .logo { width: 36px; height: 36px; width: 40px; height: 40px; }
+  .logo svg { width: 20px; height: 20px; }
   .brand p { display: none; }
+
+  main { padding-bottom: 4px; }
+
+  .kbd { display: none; }
+}
+@media (max-width: 360px) {
+  .brand h1 { font-size: 16px; }
+  .suggestions { grid-template-columns: 1fr; }
+}
+@media (max-width: 280px) {
+  .app { padding: var(--safe-top) 8px 0; }
+  .btn { min-height: 40px; }
+  .repo-text { flex-direction: row; align-items: center; }
+  .repo-label { margin-inline-end: 8px; display: inline-block; }
+  .repo-name { font-size: 12px; }
 }
