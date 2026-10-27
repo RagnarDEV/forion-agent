@@ -5,7 +5,9 @@ import { github } from "../lib/github.js";
 function isAutoMergeEnabled(env) {
   return String(env.AUTO_MERGE || "")
     .trim()
-    .toLowerCase() === "true";
+    .toLowerCase() === "true" &&
+    typeof env.ADMIN_TOKEN === "string" &&
+    env.ADMIN_TOKEN.length > 0;
 }
 
 async function enablePullRequestAutoMerge(env, pullRequestId) {
@@ -94,7 +96,7 @@ async function enablePullRequestAutoMerge(env, pullRequestId) {
 
 export async function publishChanges(
   env,
-  { encodedRepo, scan, summary, changed }
+  { encodedRepo, scan, summary, changed, userInitiated } = {}
 ) {
   const { base, snapshot } = scan;
 
@@ -194,11 +196,7 @@ export async function publishChanges(
               .map(file => "- `" + file.path + "`")
               .join("\n") +
             "\n\n---\n" +
-            (
-              isAutoMergeEnabled(env)
-                ? "سيطلب الوكيل تفعيل الدمج التلقائي عبر GitHub."
-                : "الدمج التلقائي معطل في إعدادات الوكيل."
-            )
+            "\n**ملاحظة:** سيتم طلب الدمج التلقائي (Auto-Merge) في السيرفر إذا كان الإعداد مفعل وراسل الطلب مرتبطًا بخادم يمتلك `ADMIN_TOKEN`."
         })
       }
     );
@@ -210,13 +208,13 @@ export async function publishChanges(
     );
   }
 
-  // لا نفعّل الدمج التلقائي إلا إذا طلبه الإعداد صراحةً.
+  // لا نفعّل الدمج التلقائي إلا إذا طُلب صراحةً من المستخدم وعُدل الإعداد على السيرفر.
   let autoMerge = {
     enabled: false,
-    reason: "AUTO_MERGE غير مفعّل."
+    reason: "AUTO_MERGE غير مفعّل أو الطلب غير ملزم."
   };
 
-  if (isAutoMergeEnabled(env)) {
+  if (isAutoMergeEnabled(env) && userInitiated) {
     if (!pr.node_id) {
       autoMerge = {
         enabled: false,
