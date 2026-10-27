@@ -2,7 +2,7 @@ import { json } from "./http.js";
 import { cleanSecret, safeEqual } from "./security.js";
 
 // يُرجع Response عند الفشل، أو null عند نجاح المصادقة.
-export async function authenticate(request, env) {
+export async function authenticate(request, env, options = {}) {
   const adminToken = cleanSecret(env.ADMIN_TOKEN);
   const missing = [];
 
@@ -20,6 +20,13 @@ export async function authenticate(request, env) {
     return json({
       error: "رمز الإدارة غير صحيح. تأكد من تطابقه مع ADMIN_TOKEN في إعدادات Cloudflare."
     }, 401);
+  }
+
+  // التحقق من توفر ADMIN_TOKEN المصرح به (مزامنة الإعدادات).
+  if (!(options?.skipEnvCheck || env.ADMIN_TOKEN)) {
+     return json({
+       error: "إعداد ADMIN_TOKEN غير موجود أو فارغ في إعدادات الخادم (مطلوب لتشغيل الدمج التلقائي)."
+     }, 503);
   }
 
   return null;

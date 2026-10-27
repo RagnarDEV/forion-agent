@@ -7,7 +7,7 @@ import { generateChanges } from "./generate.js";
 import { publishChanges } from "./publish.js";
 
 export async function runPipeline(env, input, io) {
-  const { repo, task, history } = input;
+  const { repo, task, history, userInitiated } = input;
   const encodedRepo = encodeRepo(repo);
 
   const stage = (name, message) => {
@@ -122,7 +122,8 @@ export async function runPipeline(env, input, io) {
     encodedRepo,
     scan,
     summary: outcome.summary || "تعديلات Forion Agent",
-    changed: outcome.changed
+    changed: outcome.changed,
+    userInitiated
   });
 
   return {
