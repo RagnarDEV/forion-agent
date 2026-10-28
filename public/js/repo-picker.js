@@ -17,13 +17,14 @@ export function renderRepoButton() {
   }
 }
 
-// يحفظ آخر مستودع مختار ويستعيده إن كان ما زال متاحًا.
+// يستعيد آخر مستودع اختاره المستخدم إن كان ما زال متاحًا.
+// لا يختار مستودعًا تلقائيًا: التعديلات تُنشأ على مستودع حقيقي، فيجب أن يكون الاختيار صريحًا.
 export function setRepos(repos) {
   state.repos = repos;
 
   const saved = store.local.get("repo");
   const keep = [state.repo, saved].find(name => name && repos.some(item => item.full_name === name));
-  state.repo = keep || (repos[0] ? repos[0].full_name : "");
+  state.repo = keep || "";
 
   renderRepoButton();
 }

@@ -8,7 +8,10 @@ export const LIMITS = Object.freeze({
   maxFileBytes: 24000,
   maxTotalBytes: 70000,
   maxCandidates: 700,
+  // الحد الأقصى لطول المهمة (بالأحرف). يُطبَّق في الخادم وفي الواجهة (public/js/main.js).
   maxTaskChars: 50000,
+  // حماية إضافية: يُرفض أي طلب يعلن Content-Length أكبر من هذا (بالبايت).
+  maxBodyBytes: 600000,
   maxHistoryItems: 6,
   maxHistoryChars: 15000,
   maxNewFiles: 3,

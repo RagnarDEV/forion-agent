@@ -1,5 +1,6 @@
 import { json } from "./lib/http.js";
 import { authenticate } from "./lib/auth.js";
+import { errorMessage, errorStatus } from "./lib/errors.js";
 import { handleRepos } from "./routes/repos.js";
 import { handleTask } from "./routes/task.js";
 
@@ -52,9 +53,7 @@ export default {
     try {
       return await handler(request, env, ctx);
     } catch (error) {
-      return json({
-        error: String(error?.message || error || "خطأ غير متوقع").slice(0, 600)
-      }, 500);
+      return json({ error: errorMessage(error) }, errorStatus(error));
     }
   }
 };
