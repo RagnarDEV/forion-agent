@@ -18,6 +18,11 @@ function compactHistory(history) {
 }
 
 export async function handleTask(request, env, ctx) {
+  const declared = Number(request.headers.get("Content-Length") || 0);
+  if (declared > LIMITS.maxBodyBytes) {
+    return json({ error: "حجم الطلب أكبر من الحد المسموح." }, 413);
+  }
+
   let input;
   try {
     input = await request.json();
@@ -34,8 +39,11 @@ export async function handleTask(request, env, ctx) {
   if (!task) {
     return json({ error: "اكتب المهمة أولًا." }, 400);
   }
-
-  // لا يُجري هذا المسار تحققًا من طول الرسالة.
+  if (task.length > LIMITS.maxTaskChars) {
+    return json({
+      error: "الرسالة أطول من الحد المسموح (" + LIMITS.maxTaskChars + " حرف)."
+    }, 400);
+  }
 
   return streamTask(env, ctx, {
     repo,
