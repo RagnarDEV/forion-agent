@@ -64,12 +64,65 @@ async function enablePullRequestAutoMerge(env, pullRequestId) {
   };
 }
 
+const touchesWorkflows = entries =>
+  entries.some(entry => /(^|\/)\.github\/workflows\//i.test(entry.path));
+
+// تعديل ملفات .github/workflows يحتاج صلاحية Workflows في GITHUB_TOKEN؛ نشرح ذلك بدل رسالة 403 غامضة.
+function explainTreeError(error, entries) {
+  if (error && error.fromGitHub && [403, 404, 422].includes(error.status) && touchesWorkflows(entries)) {
+    return new UserError(
+      "رفض GitHub تعديل ملفات .github/workflows. يحتاج GITHUB_TOKEN إلى صلاحية " +
+      "Workflows (Read and write)، أو استثنِ هذه الملفات من الطلب.\n" + String(error.message).slice(0, 300)
+    );
+  }
+
+  return error;
+}
+
+// يحوّل نتيجة التوليد إلى مدخلات شجرة git: حذف (sha=null) ونقل وتعديل/إنشاء.
+function buildTreeEntries(snapshot, { changed, deleted, renamed }) {
+  const existing = new Map(
+    (snapshot.tree.tree || []).filter(item => item.type === "blob").map(item => [item.path, item])
+  );
+  const entries = new Map();
+
+  for (const path of deleted) {
+    entries.set(path, { path, mode: existing.get(path)?.mode || "100644", type: "blob", sha: null });
+  }
+
+  for (const { from, to } of renamed) {
+    const source = existing.get(from);
+    if (!source) throw new UserError("تعذر نقل الملف لأنه غير موجود في المستودع: " + from);
+
+    const mode = source.mode || "100644";
+    entries.set(from, { path: from, mode, type: "blob", sha: null });
+    entries.set(to, { path: to, mode, type: "blob", sha: source.sha });
+  }
+
+  for (const file of changed) {
+    entries.set(file.path, {
+      path: file.path,
+      mode: existing.get(file.path)?.mode || "100644",
+      type: "blob",
+      content: file.content
+    });
+  }
+
+  return [...entries.values()];
+}
+
+const firstLine = (text, max) => String(text || "")
+  .split("\n")[0]
+  .replace(/\s+/g, " ")
+  .trim()
+  .slice(0, max);
+
 // ينشئ commit وفرعًا مستقلًا وPull Request.
 // الدمج التلقائي اختياري ويُفعَّل فقط عند AUTO_MERGE="true".
-export async function publishChanges(env, { encodedRepo, scan, summary, changed }) {
+export async function publishChanges(env, { encodedRepo, scan, summary, changed = [], deleted = [], renamed = [] }) {
   const { base, snapshot } = scan;
 
-  if (!Array.isArray(changed) || changed.length === 0) {
+  if (!changed.length && !deleted.length && !renamed.length) {
     throw new UserError("لا توجد تغييرات صالحة للنشر.");
   }
 
@@ -78,23 +131,18 @@ export async function publishChanges(env, { encodedRepo, scan, summary, changed 
     throw new UserError("تغيّر الفرع الأساسي أثناء التحليل. أعد المحاولة على أحدث نسخة.");
   }
 
-  const oneLine = String(summary || "تعديلات Forion Agent")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 120);
+  const oneLine = firstLine(summary, 100) || "تعديلات Forion Agent";
+  const entries = buildTreeEntries(snapshot, { changed, deleted, renamed });
 
-  const tree = await github(env, "/repos/" + encodedRepo + "/git/trees", {
-    method: "POST",
-    body: JSON.stringify({
-      base_tree: snapshot.treeSha,
-      tree: changed.map(file => ({
-        path: file.path,
-        mode: "100644",
-        type: "blob",
-        content: file.content
-      }))
-    })
-  });
+  let tree;
+  try {
+    tree = await github(env, "/repos/" + encodedRepo + "/git/trees", {
+      method: "POST",
+      body: JSON.stringify({ base_tree: snapshot.treeSha, tree: entries })
+    });
+  } catch (error) {
+    throw explainTreeError(error, entries);
+  }
 
   const commit = await github(env, "/repos/" + encodedRepo + "/git/commits", {
     method: "POST",
@@ -115,6 +163,7 @@ export async function publishChanges(env, { encodedRepo, scan, summary, changed 
   });
 
   const autoMergeOn = isAutoMergeEnabled(env);
+  const list = (title, items) => items.length ? "\n\n## " + title + "\n" + items.join("\n") : "";
 
   let pr;
   try {
@@ -126,8 +175,9 @@ export async function publishChanges(env, { encodedRepo, scan, summary, changed 
         base,
         body:
           "## ملخص التعديلات\n" + String(summary || oneLine).slice(0, 4000) +
-          "\n\n## الملفات المعدلة\n" +
-          changed.map(file => "- `" + file.path + "`").join("\n") +
+          list("الملفات المعدلة أو الجديدة", changed.map(file => "- `" + file.path + "`")) +
+          list("الملفات المحذوفة", deleted.map(path => "- `" + path + "`")) +
+          list("الملفات المنقولة", renamed.map(item => "- `" + item.from + "` ← `" + item.to + "`")) +
           "\n\n---\n" +
           (autoMergeOn
             ? "سيطلب الوكيل تفعيل الدمج التلقائي عبر GitHub (يُدمج عند نجاح الفحوصات المطلوبة)."
@@ -155,5 +205,60 @@ export async function publishChanges(env, { encodedRepo, scan, summary, changed 
     }
   }
 
-  return { branch, url: pr.html_url, oneLine, autoMerge };
+  return {
+    branch,
+    url: pr.html_url,
+    number: pr.number,
+    oneLine,
+    autoMerge,
+    headSha: commit.sha,
+    treeSha: tree.sha
+  };
+}
+
+// يضيف commit جديدًا فوق فرع قائم (إصلاحات ما بعد فشل الفحوصات).
+export async function commitToBranch(env, encodedRepo, { branch, parentSha, parentTreeSha, changed = [], deleted = [], message }) {
+  const entries = [
+    ...deleted.map(path => ({ path, mode: "100644", type: "blob", sha: null })),
+    ...changed.map(file => ({ path: file.path, mode: "100644", type: "blob", content: file.content }))
+  ];
+
+  if (!entries.length) throw new UserError("لا توجد تغييرات لإضافتها إلى الفرع.");
+
+  let tree;
+  try {
+    tree = await github(env, "/repos/" + encodedRepo + "/git/trees", {
+      method: "POST",
+      body: JSON.stringify({ base_tree: parentTreeSha, tree: entries })
+    });
+  } catch (error) {
+    throw explainTreeError(error, entries);
+  }
+
+  const commit = await github(env, "/repos/" + encodedRepo + "/git/commits", {
+    method: "POST",
+    body: JSON.stringify({ message, tree: tree.sha, parents: [parentSha] })
+  });
+
+  await github(env, "/repos/" + encodedRepo + "/git/refs/heads/" + encodeRef(branch), {
+    method: "PATCH",
+    body: JSON.stringify({ sha: commit.sha, force: false })
+  });
+
+  return { sha: commit.sha, treeSha: tree.sha };
+}
+
+// تعليق على الـ PR (best effort: فشله لا يُفشل المهمة).
+export async function commentOnPullRequest(env, encodedRepo, number, body) {
+  if (!number) return false;
+
+  try {
+    await github(env, "/repos/" + encodedRepo + "/issues/" + number + "/comments", {
+      method: "POST",
+      body: JSON.stringify({ body })
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }

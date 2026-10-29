@@ -1,7 +1,13 @@
 // قواعد اختيار الملفات النصية الآمنة للقراءة والتعديل.
+//
+// الممنوع فقط: الأسرار (.env وما شابهها)، مجلدات التبعيات والبناء و.git،
+// الملفات المولَّدة (lockfiles و min و map)، والمسارات الخطرة (.. والمطلقة).
+// ملفات .github/workflows والإعدادات (wrangler.toml, package.json) مسموحة
+// حتى يتمكن الوكيل من تطوير نفسه.
 
-const SOURCE_EXT = /\.(js|mjs|cjs|ts|tsx|jsx|html|css|py|go|rs|java|php|sh)$/i;
-const TEXT_EXT = /\.(js|mjs|cjs|ts|tsx|jsx|html|css|json|md|txt|yml|yaml|toml|py|go|rs|java|php|sql|sh|xml|svg)$/i;
+const SOURCE_EXT = /\.(js|mjs|cjs|ts|tsx|jsx|vue|svelte|html|css|py|go|rs|java|kt|rb|php|sh)$/i;
+const TEXT_EXT = /\.(js|mjs|cjs|ts|tsx|jsx|vue|svelte|html|css|scss|less|json|jsonc|md|mdx|txt|yml|yaml|toml|ini|cfg|conf|py|go|rs|java|kt|rb|php|sql|sh|xml|svg|webmanifest|graphql)$/i;
+const TEXT_NAMES = /(^|\/)(\.gitignore|\.editorconfig|\.prettierrc|\.eslintrc|\.nvmrc|dockerfile|makefile|license|cname|_headers|_redirects)$/i;
 
 export function isSafeTextPath(path) {
   if (typeof path !== "string" || !path || path.length > 240) return false;
@@ -13,12 +19,11 @@ export function isSafeTextPath(path) {
 
   if (/(^|\/)\.env($|\.)/i.test(path)) return false;
   if (/(^|\/)(secrets?|credentials?)(\/|\.|$)/i.test(path)) return false;
-  if (/(^|\/)(node_modules|vendor|dist|build|coverage|\.git)\//i.test(path)) return false;
-  if (/(^|\/)\.github\/workflows\//i.test(path)) return false;
+  if (/(^|\/)(node_modules|vendor|dist|build|coverage|\.wrangler|\.git)\//i.test(path)) return false;
   if (/(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|composer\.lock)$/i.test(path)) return false;
   if (/\.(min\.js|min\.css|map)$/i.test(path)) return false;
 
-  return TEXT_EXT.test(path);
+  return TEXT_EXT.test(path) || TEXT_NAMES.test(path);
 }
 
 // ملفات الشيفرة أولًا، ثم الأقل عمقًا، ثم الترتيب الأبجدي.

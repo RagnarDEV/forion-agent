@@ -7,19 +7,25 @@ function decodeBase64(value) {
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
 
+// يقرأ نص ملف واحد من GitHub عبر معرّف الـ blob.
+export async function fetchBlobText(env, encodedRepo, sha, path) {
+  const blob = await github(env, "/repos/" + encodedRepo + "/git/blobs/" + sha);
+
+  if (blob.encoding !== "base64" || typeof blob.content !== "string") {
+    throw new UserError("تعذرت قراءة الملف: " + path);
+  }
+
+  try {
+    return decodeBase64(blob.content);
+  } catch {
+    throw new UserError("الملف ليس نصًا بترميز UTF-8: " + path);
+  }
+}
+
 // يقرأ محتوى الملفات المختارة بالتوازي.
 export function readFiles(env, encodedRepo, chosen) {
-  return Promise.all(chosen.map(async item => {
-    const blob = await github(env, "/repos/" + encodedRepo + "/git/blobs/" + item.sha);
-
-    if (blob.encoding !== "base64" || typeof blob.content !== "string") {
-      throw new UserError("تعذرت قراءة الملف: " + item.path);
-    }
-
-    try {
-      return { path: item.path, content: decodeBase64(blob.content) };
-    } catch {
-      throw new UserError("الملف ليس نصًا بترميز UTF-8: " + item.path);
-    }
-  }));
+  return Promise.all(chosen.map(async item => ({
+    path: item.path,
+    content: await fetchBlobText(env, encodedRepo, item.sha, item.path)
+  })));
 }

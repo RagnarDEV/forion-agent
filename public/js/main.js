@@ -7,8 +7,9 @@ import { toast } from "./toast.js";
 import { addMessage, createProgress, renderWelcome, initChatScroll, showResult, showFailure } from "./chat.js";
 import { initRepoPicker, setRepos, openRepoPicker } from "./repo-picker.js";
 
-const MAX_CHARS = 4000;
-const COUNT_FROM = 3200;
+// يجب أن يطابق LIMITS.maxTaskChars في src/config.js (الخادم يرفض ما هو أطول).
+const MAX_CHARS = 50000;
+const COUNT_FROM = 40000;
 let draftTimer = 0;
 
 function autosize() {
@@ -119,6 +120,10 @@ async function sendMessage() {
     return;
   }
   if (!task) return;
+  if (task.length > MAX_CHARS) {
+    toast("الرسالة أطول من الحد المسموح (" + MAX_CHARS + " حرف).", "error", 4000);
+    return;
+  }
 
   state.busy = true;
   state.lastTask = task;
@@ -175,6 +180,9 @@ async function logout() {
 }
 
 function initEvents() {
+  // يمنع المتصفح من تجاوز الحد (العداد يظهر قرب الحد؛ والخادم يتحقق أيضًا).
+  $("task").maxLength = MAX_CHARS;
+
   $("connect").addEventListener("click", connect);
   $("token").addEventListener("keydown", event => {
     if (event.key === "Enter" && !event.isComposing) {

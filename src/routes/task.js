@@ -48,6 +48,9 @@ export async function handleTask(request, env, ctx) {
   return streamTask(env, ctx, {
     repo,
     task,
-    history: compactHistory(input.history)
+    history: compactHistory(input.history),
+    // الخيارات والمهارات تُتحقق منها داخل الخط (normalizeOptions / buildRegistry).
+    options: input.options,
+    skills: Array.isArray(input.skills) ? input.skills.slice(0, 100) : []
   });
 }

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import worker from "../src/index.js";
+import { LIMITS } from "../src/config.js";
 import { baseEnv, fakeAI, makeRepo } from "./helpers.js";
 
 const ctx = () => {
@@ -48,7 +49,11 @@ test("التحقق من مدخلات /api/task", async () => {
 
   assert.equal((await post({ repo: "no-slash", task: "x" })).status, 400);
   assert.equal((await post({ repo: "o/r", task: "   " })).status, 400);
-  assert.equal((await post({ repo: "o/r", task: "x".repeat(4001) })).status, 400);
+
+  // الحد الأقصى لطول المهمة من config.js (50000 حرف).
+  const tooLong = await post({ repo: "o/r", task: "x".repeat(LIMITS.maxTaskChars + 1) });
+  assert.equal(tooLong.status, 400);
+  assert.match((await tooLong.json()).error, /أطول من الحد/);
 });
 
 test("/api/repos يُرجع المستودعات القابلة للكتابة والنموذج وحالة الدمج التلقائي", async () => {
