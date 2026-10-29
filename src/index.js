@@ -3,12 +3,15 @@ import { authenticate } from "./lib/auth.js";
 import { errorMessage, errorStatus } from "./lib/errors.js";
 import { handleRepos } from "./routes/repos.js";
 import { handleTask } from "./routes/task.js";
+import { handleSkills } from "./routes/skills.js";
+import { handleIcon, isIconPath } from "./routes/icons.js";
 
 // الواجهة تُقدَّم من مجلد public بواسطة Cloudflare Workers Static Assets.
-// هذا الملف مسؤول عن واجهة /api/* وتوجيه الطلبات فقط.
+// هذا الملف مسؤول عن واجهة /api/* وأيقونات التطبيق وتوجيه الطلبات فقط.
 
 const ROUTES = new Map([
   ["GET /api/repos", handleRepos],
+  ["GET /api/skills", handleSkills],
   ["POST /api/task", handleTask]
 ]);
 
@@ -32,6 +35,9 @@ export default {
     const url = new URL(request.url);
 
     if (!url.pathname.startsWith("/api/")) {
+      if (request.method === "GET" && isIconPath(url.pathname)) {
+        return handleIcon(request, ctx);
+      }
       return serveStatic(request, env);
     }
 
