@@ -6,9 +6,15 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0F172A">
 <meta name="description" content="Forion Agent — مساعد برمجي لتطوير مستودعات GitHub مع Pull Request للمراجعة">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Forion">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Forion Agent</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
@@ -17,6 +23,7 @@
 <link rel="stylesheet" href="/css/components.css">
 <link rel="stylesheet" href="/css/chat.css">
 <link rel="stylesheet" href="/css/motion.css">
+<link rel="stylesheet" href="/css/settings.css">
 </head>
 <body>
 <a class="skip" href="#main">تخطّ إلى المحتوى</a>
@@ -34,6 +41,7 @@
       <span id="connText"></span>
       <span id="connModel" class="conn-model"></span>
     </div>
+    <button class="btn btn-ghost icon-only" id="settingsBtn" type="button" aria-haspopup="dialog" aria-label="الإعدادات" hidden><span data-icon="settings"></span></button>
     <button class="btn btn-ghost" id="logout" type="button" hidden><span data-icon="logout"></span><span>خروج</span></button>
   </header>
 
@@ -47,6 +55,14 @@
       <div class="inputwrap">
         <input id="token" class="token-input" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" dir="ltr" placeholder="••••••••">
         <button class="eye" id="toggleToken" type="button" aria-label="إظهار الرمز" aria-pressed="false"><span data-icon="eye"></span></button>
+        <button class="paste" id="pasteToken" type="button" aria-label="لصق الرمز من الحافظة" title="لصق من الحافظة"><span data-icon="paste"></span></button>
+      </div>
+      <div class="token-row">
+        <label class="check" for="remember">
+          <input id="remember" type="checkbox">
+          <span>تذكّرني على هذا الجهاز (30 يومًا)</span>
+        </label>
+        <span id="tokenMeta" class="token-meta" aria-live="polite"></span>
       </div>
 
       <button class="btn btn-primary block" id="connect" type="button"><span data-icon="lock"></span><span class="lbl">اتصال بـ GitHub</span></button>
@@ -55,7 +71,7 @@
       <ul class="features">
         <li class="feature"><span class="ico-box" data-icon="branch"></span><span>كل تعديل في فرع مستقل مع Pull Request</span></li>
         <li class="feature"><span class="ico-box" data-icon="shield"></span><span>أنت تتحكم في الدمج: يدويًا بعد المراجعة، أو تلقائيًا عند تفعيله ونجاح الفحوصات</span></li>
-        <li class="feature"><span class="ico-box" data-icon="file"></span><span>يقرأ الملفات المناسبة فقط ويحافظ على وظائف مشروعك</span></li>
+        <li class="feature"><span class="ico-box" data-icon="file"></span><span>يستكشف المستودع ويقرأ الملفات المناسبة ويصلح فشل الفحوصات ذاتيًا</span></li>
       </ul>
       <p class="hint">لا تضع GITHUB_TOKEN في المتصفح. احتفظ بالمفاتيح داخل أسرار Worker في Cloudflare.</p>
     </section>
@@ -87,6 +103,7 @@
           <div class="composerfoot">
             <span class="kbd">Enter للإرسال · Shift+Enter لسطر جديد · / للتركيز</span>
             <span id="count" class="count" hidden></span>
+            <button class="btn btn-danger" id="stop" type="button" aria-label="إيقاف المهمة" hidden><span data-icon="stop"></span><span>إيقاف</span></button>
             <button class="btn btn-primary flip" id="send" type="button"><span data-icon="send"></span><span class="lbl">إرسال</span></button>
           </div>
         </div>
@@ -111,6 +128,14 @@
   </div>
   <ul id="repoList" class="repo-list" aria-label="المستودعات"></ul>
   <p id="repoEmpty" class="sub repo-empty" hidden>لا توجد نتائج مطابقة.</p>
+</dialog>
+
+<dialog id="settingsDialog" class="dialog settings" aria-labelledby="settingsTitle">
+  <div class="dialog-head">
+    <h2 id="settingsTitle">الإعدادات</h2>
+    <button class="btn btn-ghost icon-only" id="settingsClose" type="button" aria-label="إغلاق"><span data-icon="close"></span></button>
+  </div>
+  <div id="settingsBody" class="settings-body"></div>
 </dialog>
 
 <script type="module" src="/js/main.js"></script>

@@ -2,14 +2,20 @@ import { $, swap, setBanner, setLoading } from "./dom.js";
 import { hydrateIcons, ICONS } from "./icons.js";
 import { state } from "./state.js";
 import { store } from "./storage.js";
-import { apiGet, runTask } from "./api.js";
+import { apiGet, runTask, AbortedError, AuthError } from "./api.js";
 import { toast } from "./toast.js";
-import { addMessage, createProgress, renderWelcome, initChatScroll, showResult, showFailure } from "./chat.js";
+import { addMessage, createProgress, renderWelcome, initChatScroll, showResult, showFailure, showCancelled } from "./chat.js";
 import { initRepoPicker, setRepos, openRepoPicker } from "./repo-picker.js";
+import {
+  loadPrefs, loadSkillState, skillsPayload,
+  loadSavedToken, saveToken, forgetToken, normalizeToken
+} from "./prefs.js";
+import { initSettings } from "./settings.js";
+import { initPwa } from "./pwa.js";
 
-// يجب أن يطابق LIMITS.maxTaskChars في src/config.js (الخادم يرفض ما هو أطول).
-const MAX_CHARS = 50000;
-const COUNT_FROM = 40000;
+// الحد الأقصى يأتي من الخادم (LIMITS.maxTaskChars)، وهذه قيمة احتياطية قبل الاتصال.
+const FALLBACK_MAX_CHARS = 50000;
+const maxChars = () => (state.limits && state.limits.maxTaskChars) || FALLBACK_MAX_CHARS;
 let draftTimer = 0;
 
 function autosize() {
@@ -20,9 +26,11 @@ function autosize() {
 
 function updateCount() {
   const length = $("task").value.length;
+  const limit = maxChars();
   const counter = $("count");
-  counter.hidden = length < COUNT_FROM;
-  counter.textContent = length + " / " + MAX_CHARS;
+
+  counter.hidden = length < limit * 0.8;
+  counter.textContent = length + " / " + limit;
 }
 
 function saveDraft() {
@@ -66,6 +74,11 @@ function setOnline(online) {
   else toast("أنت غير متصل بالإنترنت.", "error", 4000);
 }
 
+function updateTokenMeta() {
+  const length = normalizeToken($("token").value).length;
+  $("tokenMeta").textContent = length ? length + " حرفًا" : "";
+}
+
 async function loadRepos() {
   const data = await apiGet("/api/repos");
   const repos = Array.isArray(data.repos) ? data.repos : [];
@@ -73,28 +86,47 @@ async function loadRepos() {
 
   state.model = typeof data.model === "string" ? data.model : "";
   state.autoMerge = data.autoMerge === true;
+  state.limits = data.limits || null;
+  state.defaults = data.defaults || null;
   setRepos(repos);
   renderMergeNote();
+  $("task").maxLength = maxChars();
   return repos.length;
 }
 
+// المهارات المدمجة من الخادم (للعرض في الإعدادات). فشلها لا يمنع الاتصال.
+async function loadBuiltinSkills() {
+  try {
+    const data = await apiGet("/api/skills");
+    state.builtinSkills = Array.isArray(data.skills) ? data.skills : [];
+  } catch {
+    state.builtinSkills = [];
+  }
+}
+
 async function connect() {
-  const value = $("token").value.trim();
+  const value = normalizeToken($("token").value);
   if (!value) {
     setBanner($("status"), "أدخل رمز الإدارة أولًا.", "error");
     $("token").focus();
     return;
   }
 
+  $("token").value = value;
+  updateTokenMeta();
   state.token = value;
   setBanner($("status"), "");
   setLoading($("connect"), true, "جارٍ الاتصال…");
 
   try {
     const count = await loadRepos();
+    await loadBuiltinSkills();
+    saveToken(value, $("remember").checked);
+
     renderWelcome(setComposer);
     await swap($("login"), $("workspace"));
     $("logout").hidden = false;
+    $("settingsBtn").hidden = false;
     showConnection(count);
 
     const draft = store.session.get("draft");
@@ -104,6 +136,7 @@ async function connect() {
     $("task").focus();
   } catch (error) {
     state.token = "";
+    if (error instanceof AuthError) forgetToken();
     setBanner($("status"), String((error && error.message) || error), "error");
   } finally {
     setLoading($("connect"), false);
@@ -120,14 +153,17 @@ async function sendMessage() {
     return;
   }
   if (!task) return;
-  if (task.length > MAX_CHARS) {
-    toast("الرسالة أطول من الحد المسموح (" + MAX_CHARS + " حرف).", "error", 4000);
+  if (task.length > maxChars()) {
+    toast("الرسالة أطول من الحد المسموح (" + maxChars() + " حرف).", "error", 4000);
     return;
   }
 
   state.busy = true;
   state.lastTask = task;
+  state.abort = new AbortController();
   setLoading($("send"), true, "جارٍ التنفيذ");
+  $("stop").hidden = false;
+  $("stop").disabled = false;
 
   $("task").value = "";
   autosize();
@@ -135,24 +171,37 @@ async function sendMessage() {
   store.session.remove("draft");
 
   addMessage("user", task);
-  const prior = state.history.slice(-6);
+  const prior = state.history.slice(-16);
   state.history.push({ role: "user", content: task });
 
-  const progress = createProgress();
+  const progress = createProgress({ explore: state.prefs.agentic, verify: state.prefs.ciRepair });
   progress.update("scan");
 
   try {
     const result = await runTask(state.repo, task, prior, event => {
       if (event.type === "stage") progress.update(event.stage, event.message);
+      else if (event.type === "note") progress.note(event.message);
+    }, {
+      signal: state.abort.signal,
+      options: { ...state.prefs },
+      skills: skillsPayload(state.skillState)
     });
+
     progress.stop();
     showResult(result);
   } catch (error) {
     progress.stop();
     state.history.pop();
-    showFailure(String((error && error.message) || error), () => setComposer(state.lastTask));
+
+    if (error instanceof AbortedError) {
+      showCancelled(() => setComposer(state.lastTask));
+    } else {
+      showFailure(String((error && error.message) || error), () => setComposer(state.lastTask));
+    }
   } finally {
     state.busy = false;
+    state.abort = null;
+    $("stop").hidden = true;
     setLoading($("send"), false);
     $("task").focus();
   }
@@ -161,6 +210,7 @@ async function sendMessage() {
 async function logout() {
   if (state.busy) return;
 
+  forgetToken();
   state.token = "";
   state.history = [];
   state.repos = [];
@@ -169,9 +219,12 @@ async function logout() {
 
   $("token").value = "";
   $("token").type = "password";
+  $("remember").checked = false;
   $("toggleToken").firstElementChild.innerHTML = ICONS.eye;
   $("logout").hidden = true;
+  $("settingsBtn").hidden = true;
   $("conn").hidden = true;
+  updateTokenMeta();
   renderMergeNote();
   setBanner($("status"), "");
 
@@ -179,9 +232,20 @@ async function logout() {
   $("token").focus();
 }
 
+async function pasteToken() {
+  try {
+    const text = await navigator.clipboard.readText();
+    $("token").value = normalizeToken(text);
+    updateTokenMeta();
+    $("token").focus();
+  } catch {
+    toast("تعذر قراءة الحافظة. الصق الرمز يدويًا في الحقل.", "info", 3000);
+  }
+}
+
 function initEvents() {
-  // يمنع المتصفح من تجاوز الحد (العداد يظهر قرب الحد؛ والخادم يتحقق أيضًا).
-  $("task").maxLength = MAX_CHARS;
+  // يمنع المتصفح من تجاوز الحد (العداد يظهر قرب الحد، والخادم يتحقق أيضًا).
+  $("task").maxLength = maxChars();
 
   $("connect").addEventListener("click", connect);
   $("token").addEventListener("keydown", event => {
@@ -190,6 +254,15 @@ function initEvents() {
       connect();
     }
   });
+  $("token").addEventListener("input", updateTokenMeta);
+  // اللصق: نُنظّف الرمز بعد إدراجه مباشرة (مسافات، أسطر، اقتباس، Bearer).
+  $("token").addEventListener("paste", () => {
+    setTimeout(() => {
+      $("token").value = normalizeToken($("token").value);
+      updateTokenMeta();
+    }, 0);
+  });
+  $("pasteToken").addEventListener("click", pasteToken);
 
   $("toggleToken").addEventListener("click", () => {
     const input = $("token");
@@ -216,6 +289,12 @@ function initEvents() {
   });
 
   $("send").addEventListener("click", sendMessage);
+  $("stop").addEventListener("click", () => {
+    if (!state.abort) return;
+    $("stop").disabled = true;
+    state.abort.abort();
+  });
+
   $("task").addEventListener("input", () => {
     autosize();
     updateCount();
@@ -258,7 +337,24 @@ function initEvents() {
   });
 }
 
+// دخول تلقائي إن وُجد رمز محفوظ (للجلسة أو للجهاز).
+function autoLogin() {
+  const saved = loadSavedToken();
+  if (!saved) return;
+
+  $("token").value = saved.token;
+  $("remember").checked = saved.remember;
+  updateTokenMeta();
+  connect();
+}
+
+state.prefs = loadPrefs();
+state.skillState = loadSkillState();
+
 hydrateIcons();
 initRepoPicker();
 initChatScroll();
 initEvents();
+initSettings({ onLogout: logout });
+initPwa();
+autoLogin();

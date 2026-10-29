@@ -3,6 +3,33 @@ import { state } from "./state.js";
 const NET_BEFORE = "تعذر الاتصال بالخادم. تحقق من الإنترنت ثم أعد المحاولة.";
 const NET_DURING = "انقطع الاتصال أثناء التنفيذ. إن ظهر فرع جديد في GitHub فقد اكتمل جزء من العمل؛ تحقق منه ثم أعد المحاولة.";
 
+// إلغاء بطلب المستخدم (زر الإيقاف)، وليس خطأً.
+export class AbortedError extends Error {
+  constructor() {
+    super("أُوقفت المهمة.");
+    this.name = "AbortedError";
+    this.aborted = true;
+  }
+}
+
+// خطأ مصادقة (401/429) لتمييزه عن بقية الأخطاء، مثلًا عند الدخول التلقائي.
+export class AuthError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.name = "AuthError";
+    this.status = status;
+  }
+}
+
+async function parse(response) {
+  const raw = await response.text();
+  try {
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    throw new Error("استجابة غير صالحة من الخادم (HTTP " + response.status + ").");
+  }
+}
+
 export async function apiGet(path) {
   let response;
   try {
@@ -11,38 +38,38 @@ export async function apiGet(path) {
     throw new Error(NET_BEFORE);
   }
 
-  const raw = await response.text();
-  let data = {};
-  try {
-    data = raw ? JSON.parse(raw) : {};
-  } catch {
-    throw new Error("استجابة غير صالحة من الخادم (HTTP " + response.status + ").");
-  }
+  const data = await parse(response);
 
   if (!response.ok) {
-    throw new Error((data.error || "فشل الطلب") + " (HTTP " + response.status + ")");
+    const message = (data.error || "فشل الطلب") + " (HTTP " + response.status + ")";
+    if (response.status === 401 || response.status === 429) throw new AuthError(message, response.status);
+    throw new Error(message);
   }
+
   return data;
 }
 
-// يقرأ بث NDJSON: أحداث stage/ping ثم result أو error.
-export async function runTask(repo, task, history, onEvent) {
+// يقرأ بث NDJSON: أحداث stage/note/ping ثم result أو error.
+// extras: { signal, options, skills } (الإعدادات والمهارات من لوحة الإعدادات).
+export async function runTask(repo, task, history, onEvent, extras = {}) {
+  const { signal, options, skills } = extras;
   let response;
+
   try {
     response = await fetch("/api/task", {
       method: "POST",
       headers: { "X-Admin-Token": state.token, "Content-Type": "application/json" },
-      body: JSON.stringify({ repo, task, history })
+      body: JSON.stringify({ repo, task, history, options, skills }),
+      signal
     });
   } catch {
+    if (signal && signal.aborted) throw new AbortedError();
     throw new Error(NET_BEFORE);
   }
 
   const type = response.headers.get("Content-Type") || "";
   if (!type.includes("ndjson") || !response.body) {
-    const raw = await response.text();
-    let data = {};
-    try { data = raw ? JSON.parse(raw) : {}; } catch {}
+    const data = await parse(response).catch(() => ({}));
     throw new Error((data.error || "استجابة غير متوقعة من الخادم") + " (HTTP " + response.status + ")");
   }
 
@@ -56,6 +83,7 @@ export async function runTask(repo, task, history, onEvent) {
     try {
       chunk = await reader.read();
     } catch {
+      if (signal && signal.aborted) throw new AbortedError();
       throw new Error(NET_DURING);
     }
     if (chunk.done) break;
@@ -76,6 +104,7 @@ export async function runTask(repo, task, history, onEvent) {
     }
   }
 
+  if (signal && signal.aborted) throw new AbortedError();
   if (!final) throw new Error("انتهى الاتصال قبل وصول النتيجة. أعد المحاولة.");
   return final;
 }
