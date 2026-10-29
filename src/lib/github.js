@@ -9,18 +9,31 @@ export const encodeRepo = encodeSegments;
 // أسماء الفروع قد تحتوي "/" (مثل feature/x) ويجب أن تبقى كما هي في مسار المرجع.
 export const encodeRef = encodeSegments;
 
+function authHeaders(env, extra = {}) {
+  return {
+    "Authorization": "Bearer " + cleanSecret(env.GITHUB_TOKEN),
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    // GitHub يرفض (403) أي طلب بلا User-Agent.
+    "User-Agent": "forion-agent",
+    ...extra
+  };
+}
+
+function githubError(response, detail) {
+  const error = new Error("GitHub (" + response.status + "): " + detail);
+  error.fromGitHub = true;
+  error.status = response.status;
+  return error;
+}
+
 export async function github(env, path, options = {}) {
   const response = await fetch(GITHUB_API + path, {
     ...options,
-    headers: {
-      "Authorization": "Bearer " + cleanSecret(env.GITHUB_TOKEN),
-      "Accept": "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      // GitHub يرفض (403) أي طلب بلا User-Agent.
-      "User-Agent": "forion-agent",
+    headers: authHeaders(env, {
       ...(options.body ? { "Content-Type": "application/json" } : {}),
       ...(options.headers || {})
-    }
+    })
   });
 
   const raw = await response.text();
@@ -31,13 +44,23 @@ export async function github(env, path, options = {}) {
     const detail = (data && data.message) ||
       raw.replace(/\s+/g, " ").trim().slice(0, 200) ||
       "طلب GitHub فشل";
-    const error = new Error("GitHub (" + response.status + "): " + detail);
-    error.fromGitHub = true;
-    error.status = response.status;
-    throw error;
+    throw githubError(response, detail);
   }
 
   return data;
+}
+
+// يقرأ استجابة نصية (مثل سجلات GitHub Actions) ويُبقي آخر maxChars حرف منها.
+export async function githubText(env, path, maxChars = 200000) {
+  const response = await fetch(GITHUB_API + path, {
+    headers: authHeaders(env),
+    redirect: "follow"
+  });
+
+  if (!response.ok) throw githubError(response, "تعذرت قراءة النص");
+
+  const text = await response.text();
+  return text.length > maxChars ? text.slice(-maxChars) : text;
 }
 
 export async function listRepos(env) {
