@@ -76,7 +76,8 @@ export function renderWelcome(onPick) {
 }
 
 // بطاقة تقدم حية: خطوات + تفاصيل + عدّاد زمن.
-export function createProgress() {
+// enabled: { explore: bool, verify: bool } لإخفاء الخطوات المعطّلة في الإعدادات.
+export function createProgress(enabled = {}) {
   const msg = addMessage("assistant", "", { stick: true });
   msg.bubble.classList.add("progress");
 
@@ -85,7 +86,7 @@ export function createProgress() {
 
   STAGES.forEach(([key, label]) => {
     const detail = h("span", { class: "detail" });
-    const li = h("li", { class: "step" },
+    const li = h("li", { class: "step", hidden: enabled[key] === false },
       h("span", { class: "dot" }, icon("check")),
       h("span", { class: "step-text" }, h("span", { text: label }), detail)
     );
@@ -103,17 +104,28 @@ export function createProgress() {
   }, 1000);
 
   const keys = STAGES.map(entry => entry[0]);
+  let currentKey = "";
+
+  const setDetail = text => {
+    if (currentKey && items[currentKey]) items[currentKey].detail.textContent = text || "";
+  };
 
   return {
     update(stage, text) {
       const current = keys.indexOf(stage);
       if (current < 0) return;
 
+      currentKey = stage;
       keys.forEach((key, index) => {
         items[key].li.className = "step" + (index < current ? " done" : index === current ? " active" : "");
         items[key].detail.textContent = index === current && text ? text : "";
       });
       $("sr").textContent = text || STAGES[current][1];
+    },
+    // ملاحظة عابرة (مثل إعادة محاولة) تظهر تحت الخطوة الحالية.
+    note(text) {
+      setDetail(text);
+      if (text) $("sr").textContent = text;
     },
     stop() {
       clearInterval(timer);
@@ -142,8 +154,26 @@ function mergeStatus(autoMerge) {
       "): سيُدمج الـ Pull Request عند نجاح الفحوصات المطلوبة.";
   }
 
-  return autoMerge.reason ? "لم يُفعَّل الدمج التلقائي: " + autoMerge.reason : null;
+  return autoMerge.reason ? "لم يُفعَّل الدمج التلقائي: " + autoMerge.reason : null;
 }
+
+// وصف نتيجة فحوصات CI والإصلاح الذاتي.
+function ciStatus(ci) {
+  if (!ci) return null;
+
+  const repaired = ci.rounds > 0 ? " (أُجري " + ci.rounds + " إصلاح ذاتي)" : "";
+  const failed = Array.isArray(ci.failed) && ci.failed.length ? ": " + ci.failed.join("، ") : "";
+
+  switch (ci.state) {
+    case "success": return { ok: true, text: "نجحت فحوصات CI" + repaired + "." };
+    case "failure": return { ok: false, text: "ما زالت فحوصات CI فاشلة" + failed + repaired + ". " + (ci.reason || "راجع الـ Pull Request.") };
+    case "pending": return { ok: false, text: "فحوصات CI لم تكتمل بعد" + repaired + ". تابعها من الـ Pull Request." };
+    case "none": return { ok: true, text: "لا توجد فحوصات CI في هذا المستودع." };
+    default: return { ok: false, text: "تعذر قراءة فحوصات CI" + (ci.reason ? ": " + ci.reason : ".") };
+  }
+}
+
+const note = text => h("p", { class: "ai-note", text });
 
 export function showResult(result) {
   const summary = String(result.summary || "").trim() || "اكتمل التنفيذ.";
@@ -156,16 +186,30 @@ export function showResult(result) {
   }
 
   const files = Array.isArray(result.files) ? result.files : [];
-  const chips = h("div", { class: "chips" },
-    ["الفرع: " + result.branch, ...files].map(label => h("span", { class: "chip", text: label }))
-  );
+  const deleted = Array.isArray(result.deleted) ? result.deleted : [];
+  const renamed = Array.isArray(result.renamed) ? result.renamed : [];
+
+  const labels = [
+    "الفرع: " + result.branch,
+    ...files,
+    ...deleted.map(path => "حذف: " + path),
+    ...renamed.map(item => "نقل: " + item.from + " ← " + item.to)
+  ];
+
   const card = h("div", { class: "result" },
     h("div", { class: "result-head" }, icon("pr"), h("span", { text: "تم إنشاء Pull Request" })),
-    chips
+    h("div", { class: "chips" }, labels.map(label => h("span", { class: "chip", text: label })))
   );
 
-  const note = mergeStatus(result.autoMerge);
-  if (note) card.appendChild(h("p", { class: "ai-note", text: note }));
+  const merge = mergeStatus(result.autoMerge);
+  if (merge) card.appendChild(note(merge));
+
+  const ci = ciStatus(result.ci);
+  if (ci) card.appendChild(h("p", { class: "ai-note" + (ci.ok ? "" : " warn"), text: ci.text }));
+
+  if (Array.isArray(result.skills) && result.skills.length) {
+    card.appendChild(note("المهارات المستخدمة: " + result.skills.join("، ")));
+  }
 
   if (typeof result.url === "string" && /^https:\/\/github\.com\//.test(result.url)) {
     card.appendChild(h("a", {
@@ -188,6 +232,24 @@ export function showResult(result) {
 export function showFailure(text, onRetry) {
   const message = addMessage("assistant", "تعذر تنفيذ الطلب:\n" + text, { error: true, stick: true });
   const retry = h("button", { type: "button", class: "btn btn-ghost small" }, icon("refresh"), h("span", { text: "إعادة المحاولة" }));
+
+  retry.addEventListener("click", () => {
+    onRetry();
+    retry.disabled = true;
+  });
+
+  message.body.appendChild(retry);
+  scrollChat(true);
+}
+
+// إلغاء بطلب المستخدم: ليس خطأً. قد يكون الفرع أُنشئ قبل الإيقاف، ولذلك نُنبّه.
+export function showCancelled(onRetry) {
+  const message = addMessage(
+    "assistant",
+    "أُوقفت المهمة. إن كان الوكيل قد وصل إلى مرحلة النشر فقد يكون فرع قد أُنشئ؛ تحقق من مستودعك.",
+    { stick: true }
+  );
+  const retry = h("button", { type: "button", class: "btn btn-ghost small" }, icon("refresh"), h("span", { text: "إعادة الطلب" }));
 
   retry.addEventListener("click", () => {
     onRetry();
