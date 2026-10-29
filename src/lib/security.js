@@ -4,6 +4,27 @@ export function cleanSecret(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+// يوحّد شكل رمز الإدارة: يزيل الأحرف غير المرئية والمسافات والأسطر
+// والاقتباس وبادئة "Bearer"، فيعمل اللصق من أي مصدر دون أخطاء مطبعية.
+export function normalizeToken(value) {
+  if (typeof value !== "string") return "";
+
+  return value
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "")
+    .trim()
+    .replace(/^bearer\s+/i, "")
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/\s+/g, "");
+}
+
+// ADMIN_TOKEN قد يحوي عدة رموز مفصولة بسطر أو فاصلة (لتدوير الرمز دون انقطاع).
+export function parseTokenList(value) {
+  return String(value ?? "")
+    .split(/[\n,;]+/)
+    .map(normalizeToken)
+    .filter(Boolean);
+}
+
 export async function safeEqual(a, b) {
   const enc = new TextEncoder();
   const [x, y] = await Promise.all([
