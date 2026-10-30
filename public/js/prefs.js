@@ -38,21 +38,7 @@ const isObject = value => value && typeof value === "object" && !Array.isArray(v
 
 export function loadSkillState() {
   let raw = {};
-  try {
-    raw = JSON.parse(store.local.get("skills") || "{}") || {};
-  } catch {}
-
-  // تطبيع البيانات القديمة المحفوظة في المتصفح لضمان عدم الخسارة بسبب أخطاء هيكلية.
-  if (raw && Array.isArray(raw.custom)) {
-    raw.custom = raw.custom.map(item => ({
-      id: typeof item.id === "string" ? item.id.trim().toLowerCase() : "",
-      name: typeof item.name === "string" ? item.name : "",
-      description: typeof item.description === "string" ? item.description : "",
-      tags: Array.isArray(item.tags) ? item.tags.filter(tag => typeof tag === "string") : [],
-      instructions: typeof item.instructions === "string" ? item.instructions : "",
-      mode: typeof item.mode === "string" ? item.mode : "auto"
-    }).filter(item => item.id && item.instructions));
-  }
+  try { raw = JSON.parse(store.local.get("skills") || "{}") || {}; } catch {}
 
   const modes = {};
   if (isObject(raw.modes)) {
@@ -60,7 +46,7 @@ export function loadSkillState() {
   }
 
   return {
-    custom: raw.custom || [],
+    custom: Array.isArray(raw.custom) ? raw.custom.filter(isObject).slice(0, 40) : [],
     modes
   };
 }

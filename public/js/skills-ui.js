@@ -19,7 +19,7 @@ const limits = () => ({
   maxChars: (state.limits && state.limits.maxSkillChars) || 8000
 });
 
-const clean = (value, max) => value ? String(value).trim().slice(0, max) : "";
+const clean = (value, max) => (typeof value === "string" ? value.trim().slice(0, max) : "");
 const persist = () => saveSkillState(state.skillState);
 const builtinIds = () => new Set(state.builtinSkills.map(skill => skill.id));
 
