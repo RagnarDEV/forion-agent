@@ -15,16 +15,14 @@ export function h(tag, attrs, ...children) {
     else node.setAttribute(key, value === true ? "" : String(value));
   }
 
-  for (const child of children.flat(Infinity)) {
+  const flatChildren = children.flat(Infinity);
+  for (const child of flatChildren) {
     if (child == null || child === false) continue;
-    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
-  }
-
-  for (const child of children.flat(Infinity)) {
-    // إدراج البطاقات والمصفوفات نفسها كعناصر صحيحة إذا لم تندرج تحت الشرط السابق
-    if (child == null || child === false) continue;
-    const realChild = child instanceof Node ? child : document.createTextNode(String(child));
-    node.append(realChild);
+    if (child instanceof Node) {
+      node.append(child);
+    } else {
+      node.append(document.createTextNode(String(child)));
+    }
   }
 
   return node;
