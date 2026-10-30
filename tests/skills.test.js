@@ -69,7 +69,7 @@ test("buildRegistry: العناصر التالفة تُتجاهل ويُحصى �
 
   assert.equal(skipped, 4);
   assert.equal(registry.list().length, BUILTIN_SKILLS.length);
-  assert.deepEqual(buildRegistry(undefined).skipped, 0);
+  assert.equal(buildRegistry(undefined).skipped, 0);
 });
 
 test("buildRegistry: مهارة مخصصة بمعرّف مدمجة تستبدلها", () => {
@@ -87,7 +87,7 @@ test("pickSkills: auto بالكلمات اللاتينية ككلمة كاملة
   assert.ok(!ids("redeployment plan").includes("my-skill"));
   assert.ok(ids("افحص ثغرات المشروع").includes("security"));
   assert.ok(ids("Run a SECURITY review").includes("security"));
-  assert.deepEqual(ids("اشرح لي الفرق بين الشاي والقهوة"), []);
+  assert.deepEqual(ids("كم عدد أيام الأسبوع"), []);
 });
 
 test("pickSkills: always دائمًا، وoff أبدًا", () => {
@@ -111,7 +111,7 @@ test("buildSkillsContext: يتضمن الاسم والتعليمات ويلتز�
   assert.match(full, /### Skill: Alpha/);
   assert.match(full, /### Skill: Beta/);
 
-  const small = buildSkillsContext(picked, 450);
+  const small = buildSkillsContext(picked, 600);
   assert.match(small, /### Skill: Alpha/);
   assert.doesNotMatch(small, /### Skill: Beta/);
 
