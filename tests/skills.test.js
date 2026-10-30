@@ -1,77 +1,120 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { selectFiles, SKILLS_REGISTRY } from "../src/pipeline/select.js";
+import { UserError } from "../src/lib/errors.js";
+import {
+  BUILTIN_SKILLS, buildRegistry, buildSkillsContext, pickSkills, sanitizeSkill, slugify
+} from "../src/skills/index.js";
+import { createRegistry } from "../src/skills/registry.js";
 
-const env = {};
-
-function createScan() {
-  const file = { path: "src/index.js", size: 1000, sha: "test-sha" };
-
-  return {
-    candidates: [file],
-    candidateMap: new Map([[file.path, file]]),
-    totalBytes: file.size
-  };
-}
-
-function registerSkills() {
-  SKILLS_REGISTRY.unregisterSkill("lint");
-  SKILLS_REGISTRY.unregisterSkill("security");
-
-  SKILLS_REGISTRY.registerSkill("lint", {
-    name: "Static Analysis",
-    description: "Helper for linting",
-    tags: ["code-quality", "lint"],
-    instructions: "Review code for linting and quality issues."
-  });
-
-  SKILLS_REGISTRY.registerSkill("security", {
-    name: "Security Review",
-    description: "Review for vulnerabilities",
-    tags: ["security"],
-    instructions: "Review code for security vulnerabilities."
-  });
-}
-
-const select = task => selectFiles(env, { task, history: [], scan: createScan() });
-
-test("اكتشاف المهارات بالمعرّف والوسوم", async () => {
-  registerSkills();
-  const result = await select("Use security and lint skills");
-  const ids = result.skills.map(skill => skill.id);
-
-  assert.ok(ids.includes("security"));
-  assert.ok(ids.includes("lint"));
+const skill = (overrides = {}) => ({
+  id: "my-skill",
+  name: "My Skill",
+  description: "وصف",
+  tags: ["deploy", "نشر"],
+  instructions: "Always run the deploy checklist before publishing.",
+  ...overrides
 });
 
-test("لا تُختار مهارات غير مرتبطة بالطلب", async () => {
-  registerSkills();
-  const result = await select("Explain the purpose of this JavaScript file");
+test("sanitizeSkill: ينظّف الحقول ويضبط الوضع الافتراضي", () => {
+  const clean = sanitizeSkill(skill({ id: " My-Skill ", tags: [" Deploy ", "deploy", "", 5] }));
 
-  assert.equal(result.skills.length, 0);
-  assert.equal(result.skillsContext, "");
+  assert.equal(clean.id, "my-skill");
+  assert.deepEqual(clean.tags, ["deploy"]);
+  assert.equal(clean.mode, "auto");
 });
 
-test("تعليمات المهارة المختارة تدخل في السياق", async () => {
-  registerSkills();
-  const result = await select("Perform a security review");
-
-  assert.ok(result.skillsContext.includes("Security Review"));
-  assert.ok(result.skillsContext.includes("Review code for security vulnerabilities."));
+test("sanitizeSkill: يرفض المعرّف والتعليمات غير الصالحة", () => {
+  assert.throws(() => sanitizeSkill(skill({ id: "Bad Id!" })), UserError);
+  assert.throws(() => sanitizeSkill(skill({ id: "../x" })), UserError);
+  assert.throws(() => sanitizeSkill(skill({ instructions: "   " })), UserError);
+  assert.throws(() => sanitizeSkill(null), UserError);
+  assert.throws(() => sanitizeSkill([]), UserError);
 });
 
-test("يُرجع الملفات حتى عند عدم طابق مهارات", async () => {
-  registerSkills();
-  const result = await select("Review this file for general readability");
-
-  assert.equal(result.files.length, 1);
-  assert.equal(result.files[0].path, "src/index.js");
+test("slugify", () => {
+  assert.equal(slugify("Team Rules!"), "team-rules");
+  assert.equal(slugify("قواعد الفريق"), "");
 });
 
-test("بيانات المهارات المسجّلة", () => {
-  registerSkills();
-  const security = SKILLS_REGISTRY.listActiveSkills().find(skill => skill.id === "security");
+test("السجل يُنسخ ولا يتشارك حالة بين الطلبات", () => {
+  const first = createRegistry();
+  first.register(skill());
+  first.get("my-skill").tags.push("mutated");
 
-  assert.ok(security);
-  assert.ok(security.tags.includes("security"));
+  assert.deepEqual(first.get("my-skill").tags, ["deploy", "نشر"]);
+  assert.equal(createRegistry().has("my-skill"), false);
+});
+
+test("buildRegistry: المدمجة موجودة، والمخصصة تُضاف، وأوضاع المدمجة تتغير", () => {
+  const { registry, skipped } = buildRegistry([
+    skill(),
+    { id: "security", mode: "always" },
+    { id: "code-review", mode: "off" }
+  ]);
+
+  assert.equal(skipped, 0);
+  assert.equal(registry.list().length, BUILTIN_SKILLS.length + 1);
+  assert.equal(registry.get("security").mode, "always");
+  assert.equal(registry.get("code-review").mode, "off");
+  assert.equal(registry.get("my-skill").name, "My Skill");
+});
+
+test("buildRegistry: العناصر التالفة تُتجاهل ويُحصى عددها", () => {
+  const { registry, skipped } = buildRegistry([
+    skill({ id: "Bad Id!" }),
+    { id: "ghost-skill", mode: "always" },
+    "nope",
+    null
+  ]);
+
+  assert.equal(skipped, 4);
+  assert.equal(registry.list().length, BUILTIN_SKILLS.length);
+  assert.deepEqual(buildRegistry(undefined).skipped, 0);
+});
+
+test("buildRegistry: مهارة مخصصة بمعرّف مدمجة تستبدلها", () => {
+  const { registry } = buildRegistry([skill({ id: "security", name: "Our Security", tags: ["secure"] })]);
+
+  assert.equal(registry.get("security").name, "Our Security");
+});
+
+test("pickSkills: auto بالكلمات اللاتينية ككلمة كاملة وبالعربية بالاحتواء", () => {
+  const { registry } = buildRegistry([skill()]);
+  const ids = task => pickSkills(registry, task).map(item => item.id);
+
+  assert.ok(ids("Please run the deploy now").includes("my-skill"));
+  assert.ok(ids("جهّز نشر المشروع").includes("my-skill"));
+  assert.ok(!ids("redeployment plan").includes("my-skill"));
+  assert.ok(ids("افحص ثغرات المشروع").includes("security"));
+  assert.ok(ids("Run a SECURITY review").includes("security"));
+  assert.deepEqual(ids("اشرح لي الفرق بين الشاي والقهوة"), []);
+});
+
+test("pickSkills: always دائمًا، وoff أبدًا", () => {
+  const { registry } = buildRegistry([
+    skill({ mode: "always" }),
+    { id: "security", mode: "off" }
+  ]);
+  const ids = pickSkills(registry, "افحص security").map(item => item.id);
+
+  assert.ok(ids.includes("my-skill"));
+  assert.ok(!ids.includes("security"));
+});
+
+test("buildSkillsContext: يتضمن الاسم والتعليمات ويلتزم بالميزانية", () => {
+  const registry = createRegistry();
+  registry.register(skill({ id: "alpha", name: "Alpha", instructions: "A".repeat(300) }));
+  registry.register(skill({ id: "beta", name: "Beta", instructions: "B".repeat(300) }));
+  const picked = registry.list();
+
+  const full = buildSkillsContext(picked);
+  assert.match(full, /### Skill: Alpha/);
+  assert.match(full, /### Skill: Beta/);
+
+  const small = buildSkillsContext(picked, 450);
+  assert.match(small, /### Skill: Alpha/);
+  assert.doesNotMatch(small, /### Skill: Beta/);
+
+  assert.equal(buildSkillsContext([]), "");
+  assert.equal(buildSkillsContext(undefined), "");
 });
