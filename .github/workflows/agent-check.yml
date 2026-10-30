@@ -1,16 +1,23 @@
-
 name: Agent Change Checks
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: agent-checks-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
+    name: Tests and syntax
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,6 +26,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      - name: Run tests
+        run: npm test
 
       - name: Validate JSON files
         shell: bash
