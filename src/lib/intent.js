@@ -27,7 +27,8 @@ export function requestsNoChanges(task) {
 }
 
 // طلب صريح لكتابة تعليق على issue أو Pull Request. أداة التعليق لا تُتاح للنموذج إلا عندها.
-const COMMENT = /(?:^|\s)(?:علق|(?:اكتب|اضف|ضع)\s+تعليقا?|comment\s+on|post\s+a\s+comment|leave\s+a\s+comment|add\s+a\s+comment|reply\s+to)/i;
+// (?![\u0621-\u064A]) يمنع المطابقة داخل كلمات عربية أطول، مثل "تعليقات" أو "علقت".
+const COMMENT = /(?:^|\s)(?:علق(?![\u0621-\u064A])|(?:اكتب|اضف|ضع)\s+تعليقا?(?![\u0621-\u064A])|comment\s+on|post\s+a\s+comment|leave\s+a\s+comment|add\s+a\s+comment|reply\s+to)/i;
 
 export function requestsComment(task) {
   if (typeof task !== "string") return false;
