@@ -2,33 +2,66 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { isSafeTextPath, rankCandidates } from "../src/lib/paths.js";
 
-test("المسارات النصية المسموحة", () => {
+test("مسارات نصية آمنة (تشمل CI والإعدادات ليطوّر الوكيل نفسه)", () => {
   for (const path of [
-    "src/index.js", "app.py", "README.md", "styles/main.css", "main.go",
-    "lib/Foo.java", "db/schema.sql", "scripts/run.sh", "a/b/c.test.js", "icon.svg"
+    "src/index.js",
+    "public/index.html",
+    "README.md",
+    "wrangler.toml",
+    "package.json",
+    ".github/workflows/ci.yml",
+    "public/_headers",
+    "public/manifest.webmanifest",
+    ".gitignore",
+    "Dockerfile",
+    "app/main.py",
+    "cmd/server/main.go"
   ]) {
     assert.equal(isSafeTextPath(path), true, path);
   }
 });
 
-test("المسارات المحظورة", () => {
+test("مسارات ممنوعة: الأسرار والمجلدات المولّدة والخطرة", () => {
   for (const path of [
-    ".env", ".env.local", "config/.env", "node_modules/x/index.js",
-    ".github/workflows/ci.yml", "../x.js", "/etc/a.js", "a\\b.js", "a//b.js",
-    "package-lock.json", "yarn.lock", "bundle.min.js", "app.js.map",
-    "logo.svg.png", "image.png", "archive.zip", "secrets/a.json", "credentials.json", ""
+    ".env",
+    ".env.local",
+    "config/.env.production",
+    "secrets/key.json",
+    "credentials.json",
+    "node_modules/x/index.js",
+    "dist/app.js",
+    ".git/config",
+    ".wrangler/state/x.json",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "app.min.js",
+    "app.js.map",
+    "../outside.js",
+    "/abs/path.js",
+    "a\\b.js",
+    "a//b.js",
+    "./a.js",
+    "image.png",
+    "logo.svg.png",
+    "archive.zip",
+    "",
+    "x".repeat(300) + ".js"
   ]) {
     assert.equal(isSafeTextPath(path), false, path);
   }
 });
 
-test("ترتيب المرشحين: الشيفرة أولًا ثم الأقل عمقًا", () => {
-  const sorted = [
-    { path: "docs/guide.md" },
-    { path: "src/deep/file.js" },
-    { path: "index.js" },
-    { path: "README.md" }
-  ].sort(rankCandidates).map(item => item.path);
+test("قيم غير نصية", () => {
+  assert.equal(isSafeTextPath(undefined), false);
+  assert.equal(isSafeTextPath(null), false);
+  assert.equal(isSafeTextPath(42), false);
+});
 
-  assert.deepEqual(sorted, ["index.js", "src/deep/file.js", "README.md", "docs/guide.md"]);
+test("ترتيب المرشحين: الشيفرة أولًا ثم الأقل عمقًا ثم الأبجدي", () => {
+  const sorted = ["docs/guide.md", "src/deep/a.js", "b.js", "a.js", "README.md"]
+    .map(path => ({ path }))
+    .sort(rankCandidates)
+    .map(item => item.path);
+
+  assert.deepEqual(sorted, ["a.js", "b.js", "src/deep/a.js", "README.md", "docs/guide.md"]);
 });

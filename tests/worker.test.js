@@ -51,12 +51,23 @@ test("التحقق من مدخلات /api/task", async () => {
   assert.equal((await post({ repo: "o/r", task: "   " })).status, 400);
 
   // الحد الأقصى لطول المهمة من config.js (50000 حرف).
+  assert.equal(LIMITS.maxTaskChars, 50000);
   const tooLong = await post({ repo: "o/r", task: "x".repeat(LIMITS.maxTaskChars + 1) });
   assert.equal(tooLong.status, 400);
   assert.match((await tooLong.json()).error, /أطول من الحد/);
 });
 
-test("/api/repos يُرجع المستودعات القابلة للكتابة والنموذج وحالة الدمج التلقائي", async () => {
+test("حجم الطلب المعلَن الأكبر من الحد يُرفض بـ 413", async () => {
+  const response = await worker.fetch(new Request("https://forion.test/api/task", {
+    method: "POST",
+    headers: { "X-Admin-Token": "admin-secret", "Content-Type": "application/json", "Content-Length": String(LIMITS.maxBodyBytes + 1) },
+    body: JSON.stringify({ repo: "o/r", task: "x" })
+  }), baseEnv(fakeAI({})), ctx());
+
+  assert.equal(response.status, 413);
+});
+
+test("/api/repos يُرجع المستودعات القابلة للكتابة والنموذج والحدود وحالة الدمج", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify([
     { full_name: "o/w", private: true, default_branch: "main", permissions: { push: true } },
@@ -70,7 +81,19 @@ test("/api/repos يُرجع المستودعات القابلة للكتابة �
     assert.deepEqual(data.repos.map(repo => repo.full_name), ["o/w"]);
     assert.equal(data.model, "test-model");
     assert.equal(data.autoMerge, true);
+    assert.equal(data.limits.maxTaskChars, 50000);
+    assert.equal(data.defaults.attempts, 4);
   } finally { globalThis.fetch = original; }
+});
+
+test("/api/skills يُرجع المهارات المدمجة بتعليماتها", async () => {
+  const response = await call("/api/skills");
+  const data = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.ok(data.skills.length >= 5);
+  assert.ok(data.skills.every(skill => skill.id && skill.name && skill.instructions && Array.isArray(skill.tags)));
+  assert.equal((await call("/api/skills", { token: "wrong" })).status, 401);
 });
 
 test("/api/task يبث NDJSON: مراحل ثم النتيجة", async () => {
@@ -96,6 +119,29 @@ test("/api/task يبث NDJSON: مراحل ثم النتيجة", async () => {
     const last = events[events.length - 1];
     assert.equal(last.type, "result");
     assert.equal(last.url, "https://github.com/o/r/pull/7");
+  } finally { repo.restore(); }
+});
+
+test("/api/task يمرّر الخيارات والمهارات إلى الخط", async () => {
+  const repo = makeRepo({ "a.js": "export const a = 1;\n" });
+  try {
+    const ai = fakeAI({ summary: "شرح", files: [] });
+    const jobs = ctx();
+    const response = await worker.fetch(new Request("https://forion.test/api/task", {
+      method: "POST",
+      headers: { "X-Admin-Token": "admin-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repo: "o/r",
+        task: "اشرح الملف",
+        skills: [{ id: "always-on", name: "Always On", instructions: "Answer very briefly please.", mode: "always" }]
+      })
+    }), baseEnv(ai), jobs);
+
+    await response.text();
+    await Promise.all(jobs.jobs);
+
+    const prompt = ai.requests[0].messages[ai.requests[0].messages.length - 1].content;
+    assert.match(prompt, /Answer very briefly please/);
   } finally { repo.restore(); }
 });
 
