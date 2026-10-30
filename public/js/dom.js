@@ -20,6 +20,13 @@ export function h(tag, attrs, ...children) {
     node.append(child instanceof Node ? child : document.createTextNode(String(child)));
   }
 
+  for (const child of children.flat(Infinity)) {
+    // إدراج البطاقات والمصفوفات نفسها كعناصر صحيحة إذا لم تندرج تحت الشرط السابق
+    if (child == null || child === false) continue;
+    const realChild = child instanceof Node ? child : document.createTextNode(String(child));
+    node.append(realChild);
+  }
+
   return node;
 }
 
