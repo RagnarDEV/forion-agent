@@ -130,6 +130,7 @@ export function makeRepo(files, { defaultBranch = "main", push = true } = {}) {
 }
 
 // نموذج وهمي: يُرجع الردود بالترتيب، أو يستدعي دالة عند الطلب.
+// يحفظ نسخة من الرسائل لحظة الاستدعاء (الخط يضيف إلى المصفوفة نفسها لاحقًا).
 export function fakeAI(...responses) {
   const requests = [];
   let index = 0;
@@ -137,7 +138,12 @@ export function fakeAI(...responses) {
   return {
     requests,
     run: async (model, request) => {
-      requests.push(request);
+      requests.push({
+        ...request,
+        messages: Array.isArray(request.messages)
+          ? request.messages.map(message => ({ ...message }))
+          : request.messages
+      });
       const next = responses[Math.min(index++, responses.length - 1)];
       const value = typeof next === "function" ? next(request) : next;
       return { response: typeof value === "string" ? value : JSON.stringify(value) };
@@ -158,6 +164,6 @@ export const baseEnv = (ai, extra = {}) => ({
   ...extra
 });
 
-// آخر رسالة مستخدم في طلب للنموذج (هي نص الـ prompt الكامل).
+// آخر رسالة في طلب للنموذج (للمرحلة الأولى هي نص الـ prompt الكامل).
 export const lastUserMessage = request =>
   request.messages[request.messages.length - 1].content;
