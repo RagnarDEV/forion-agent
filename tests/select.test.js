@@ -1,75 +1,93 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { selectFiles } from "../src/pipeline/select.js";
+import { LIMITS } from "../src/config.js";
 import { UserError } from "../src/lib/errors.js";
 import { baseEnv, fakeAI } from "./helpers.js";
 
-const scanOf = (list, totalOverride) => {
-  const candidates = list.map(([path, size]) => ({ path, sha: "s-" + path, size }));
+function makeScan(paths, size = 100) {
+  const candidates = paths.map((path, index) => ({ path, size, sha: "sha" + index }));
+
   return {
     candidates,
-    candidateMap: new Map(candidates.map(item => [item.path, item])),
-    totalBytes: totalOverride ?? candidates.reduce((sum, item) => sum + item.size, 0)
+    candidateMap: new Map(candidates.map(file => [file.path, file])),
+    totalBytes: candidates.reduce((sum, file) => sum + file.size, 0)
   };
-};
+}
 
-const manyFiles = Array.from({ length: 12 }, (_, i) => ["src/f" + i + ".js", 1000]);
+const manyPaths = count => Array.from({ length: count }, (_, i) => "src/f" + i + ".js");
+const select = (ai, params) => selectFiles(baseEnv(ai), { task: "عدّل", history: [], ...params });
 
-test("المستودع الصغير يُختار كله دون استدعاء النموذج", async () => {
-  const ai = fakeAI(() => { throw new Error("لا يجب استدعاء النموذج"); });
-  const result = await selectFiles(baseEnv(ai), {
-    task: "عدّل", history: [], scan: scanOf([["a.js", 100], ["b.js", 200]])
-  });
+test("مستودع صغير: كل الملفات دون استدعاء النموذج", async () => {
+  const ai = fakeAI({});
+  const result = await select(ai, { scan: makeScan(["a.js", "b.js", "c.js"]) });
 
-  assert.deepEqual(result.files.map(file => file.path), ["a.js", "b.js"]);
+  assert.deepEqual(result.files.map(file => file.path), ["a.js", "b.js", "c.js"]);
   assert.equal(ai.requests.length, 0);
 });
 
-test("المستودع الكبير: يستخدم مسارات النموذج ويتجاهل غير الموجود", async () => {
-  const ai = fakeAI({ paths: ["src/f3.js", "src/ghost.js", "src/f3.js", "src/f1.js"] });
-  const result = await selectFiles(baseEnv(ai), { task: "عدّل f3", history: [], scan: scanOf(manyFiles) });
+test("مستودع كبير: النموذج يختار ولا يتجاوز الحد", async () => {
+  const paths = manyPaths(40);
+  const ai = fakeAI({ paths: paths.slice(0, 20) });
+  const result = await select(ai, { scan: makeScan(paths) });
 
-  assert.deepEqual(result.files.map(file => file.path), ["src/f3.js", "src/f1.js"]);
+  assert.equal(ai.requests.length, 1);
+  assert.equal(result.files.length, LIMITS.maxSelectFiles);
 });
 
-test("لا يتجاوز حد 8 ملفات", async () => {
-  const ai = fakeAI({ paths: manyFiles.map(([path]) => path) });
-  const result = await selectFiles(baseEnv(ai), { task: "عدّل الكل", history: [], scan: scanOf(manyFiles) });
+test("يتجاهل مسارات مخترعة", async () => {
+  const paths = manyPaths(20);
+  const ai = fakeAI({ paths: ["src/f1.js", "ghost.js"] });
+  const result = await select(ai, { scan: makeScan(paths) });
 
-  assert.equal(result.files.length, 8);
+  assert.deepEqual(result.files.map(file => file.path), ["src/f1.js"]);
 });
 
-test("اختيار فارغ: خطأ عادةً، ومسموح عند طلب إنشاء ملف", async () => {
-  const empty = () => fakeAI({ paths: [] });
+test("ملفات الاستكشاف (hints) تُقدَّم وتُضمَّن", async () => {
+  const paths = manyPaths(20);
+  const ai = fakeAI({ paths: ["src/f2.js"] });
+  const result = await select(ai, { scan: makeScan(paths), hints: ["src/f9.js", "ghost.js"] });
+
+  assert.deepEqual(result.files.map(file => file.path), ["src/f9.js", "src/f2.js"]);
+});
+
+test("يلتزم بحد الحجم الكلي", async () => {
+  const paths = manyPaths(20);
+  const ai = fakeAI({ paths: paths.slice(0, 10) });
+  const result = await select(ai, { scan: makeScan(paths, 100000) });
+
+  assert.equal(result.files.length, 2);
+});
+
+test("اختيار فارغ: مسموح عند الإنشاء، وخطأ عند تعطيله", async () => {
+  const scan = makeScan(manyPaths(20));
+
+  const allowed = await select(fakeAI({ paths: [] }), { scan, allowCreate: true });
+  assert.deepEqual(allowed, { files: [] });
 
   await assert.rejects(
-    selectFiles(baseEnv(empty()), { task: "حسّن الكود", history: [], scan: scanOf(manyFiles) }),
-    UserError
-  );
-
-  const result = await selectFiles(baseEnv(empty()), {
-    task: "أنشئ ملف جديد للاختبارات", history: [], scan: scanOf(manyFiles)
-  });
-  assert.deepEqual(result, { files: [] });
-});
-
-test("مستودع بلا ملفات نصية مع طلب إنشاء", async () => {
-  const none = scanOf([]);
-
-  assert.deepEqual(
-    await selectFiles(baseEnv(fakeAI({})), { task: "create a new file", history: [], scan: none }),
-    { files: [] }
-  );
-  await assert.rejects(
-    selectFiles(baseEnv(fakeAI({})), { task: "عدّل", history: [], scan: none }),
+    () => select(fakeAI({ paths: [] }), { scan, allowCreate: false }),
     UserError
   );
 });
 
-test("لا توجد حالة مشتركة بين الطلبات", async () => {
-  const run = () => selectFiles(baseEnv(fakeAI({})), {
-    task: "use skill foo", history: [], scan: scanOf([["a.js", 10]])
-  });
+test("مستودع بلا ملفات نصية", async () => {
+  const empty = makeScan([]);
 
-  assert.deepEqual(await run(), await run());
+  assert.deepEqual(await select(fakeAI({}), { scan: empty, allowCreate: true }), { files: [] });
+  await assert.rejects(() => select(fakeAI({}), { scan: empty, allowCreate: false }), UserError);
+});
+
+test("ردّ نموذج غير صالح أو خطأ منه يرمي UserError", async () => {
+  const scan = makeScan(manyPaths(20));
+
+  await assert.rejects(() => select(fakeAI("not json"), { scan }), UserError);
+  await assert.rejects(() => select(fakeAI({ nope: [] }), { scan }), UserError);
+  await assert.rejects(() => select(fakeAI(() => { throw new Error("boom"); }), { scan }), UserError);
+});
+
+test("مدخلات غير صالحة", async () => {
+  await assert.rejects(() => select(fakeAI({}), { task: "  ", scan: makeScan(["a.js"]) }), UserError);
+  await assert.rejects(() => select(fakeAI({}), { scan: null }), UserError);
+  await assert.rejects(() => select(fakeAI({}), { scan: { candidates: [] } }), UserError);
 });

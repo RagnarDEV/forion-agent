@@ -11,7 +11,23 @@ export function makeRepo(files, { defaultBranch = "main", push = true } = {}) {
   }));
 
   const calls = [];
-  const state = { treeBody: null, prBody: null, graphql: null };
+  const state = {
+    treeBody: null,
+    treeBodies: [],
+    prBody: null,
+    graphql: null,
+    commits: [],
+    refPatches: [],
+    comments: [],
+    // فحوصات CI: مصفوفة ثابتة أو دالة (sha, عدد الاستطلاعات) => مصفوفة.
+    checkRuns: [],
+    checkPolls: 0,
+    jobLogs: {},
+    searchItems: [],
+    issues: [],
+    issueDetails: {},
+    issueComments: {}
+  };
 
   const original = globalThis.fetch;
   globalThis.fetch = async (input, init = {}) => {
@@ -59,14 +75,53 @@ export function makeRepo(files, { defaultBranch = "main", push = true } = {}) {
 
     if (method === "POST" && path === "/repos/o/r/git/trees") {
       state.treeBody = JSON.parse(init.body);
-      return reply({ sha: "t2" });
+      state.treeBodies.push(state.treeBody);
+      return reply({ sha: "t" + (1 + state.treeBodies.length) });
     }
-    if (method === "POST" && path === "/repos/o/r/git/commits") return reply({ sha: "c2" });
+    if (method === "POST" && path === "/repos/o/r/git/commits") {
+      state.commits.push(JSON.parse(init.body));
+      return reply({ sha: "c" + (1 + state.commits.length) });
+    }
     if (method === "POST" && path === "/repos/o/r/git/refs") return reply({});
+    if (method === "PATCH" && /^\/repos\/o\/r\/git\/refs\/heads\/.+$/.test(path)) {
+      state.refPatches.push({ path, body: JSON.parse(init.body) });
+      return reply({});
+    }
     if (method === "POST" && path === "/repos/o/r/pulls") {
       state.prBody = JSON.parse(init.body);
-      return reply({ html_url: "https://github.com/o/r/pull/7", node_id: "PR_7" });
+      return reply({ html_url: "https://github.com/o/r/pull/7", node_id: "PR_7", number: 7 });
     }
+
+    const checks = path.match(/^\/repos\/o\/r\/commits\/([^/]+)\/check-runs$/);
+    if (method === "GET" && checks) {
+      const runs = typeof state.checkRuns === "function"
+        ? state.checkRuns(checks[1], state.checkPolls++)
+        : state.checkRuns;
+      return reply({ total_count: runs.length, check_runs: runs });
+    }
+
+    const logs = path.match(/^\/repos\/o\/r\/actions\/jobs\/(\d+)\/logs$/);
+    if (method === "GET" && logs) {
+      const text = state.jobLogs[logs[1]];
+      return text ? new Response(text, { status: 200 }) : reply({ message: "Not Found" }, 404);
+    }
+
+    const postedComment = path.match(/^\/repos\/o\/r\/issues\/(\d+)\/comments$/);
+    if (method === "POST" && postedComment) {
+      state.comments.push({ number: Number(postedComment[1]), body: JSON.parse(init.body).body });
+      return reply({ id: 1 });
+    }
+    if (method === "GET" && postedComment) {
+      return reply(state.issueComments[postedComment[1]] || []);
+    }
+
+    if (method === "GET" && path === "/repos/o/r/issues") return reply(state.issues);
+    const issue = path.match(/^\/repos\/o\/r\/issues\/(\d+)$/);
+    if (method === "GET" && issue) {
+      const detail = state.issueDetails[issue[1]];
+      return detail ? reply(detail) : reply({ message: "Not Found" }, 404);
+    }
+    if (method === "GET" && path === "/search/code") return reply({ items: state.searchItems });
 
     return reply({ message: "Not Found: " + method + " " + path }, 404);
   };
@@ -75,6 +130,7 @@ export function makeRepo(files, { defaultBranch = "main", push = true } = {}) {
 }
 
 // نموذج وهمي: يُرجع الردود بالترتيب، أو يستدعي دالة عند الطلب.
+// يحفظ نسخة من الرسائل لحظة الاستدعاء (الخط يضيف إلى المصفوفة نفسها لاحقًا).
 export function fakeAI(...responses) {
   const requests = [];
   let index = 0;
@@ -82,7 +138,12 @@ export function fakeAI(...responses) {
   return {
     requests,
     run: async (model, request) => {
-      requests.push(request);
+      requests.push({
+        ...request,
+        messages: Array.isArray(request.messages)
+          ? request.messages.map(message => ({ ...message }))
+          : request.messages
+      });
       const next = responses[Math.min(index++, responses.length - 1)];
       const value = typeof next === "function" ? next(request) : next;
       return { response: typeof value === "string" ? value : JSON.stringify(value) };
@@ -102,3 +163,7 @@ export const baseEnv = (ai, extra = {}) => ({
   AI: ai,
   ...extra
 });
+
+// آخر رسالة في طلب للنموذج (للمرحلة الأولى هي نص الـ prompt الكامل).
+export const lastUserMessage = request =>
+  request.messages[request.messages.length - 1].content;
