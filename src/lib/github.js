@@ -27,7 +27,10 @@ function githubError(response, detail) {
   return error;
 }
 
+// كل استدعاء يُحتسب من ميزانية الطلب (env.budget) قبل تنفيذه.
 export async function github(env, path, options = {}) {
+  if (env.budget) env.budget.spend();
+
   const response = await fetch(GITHUB_API + path, {
     ...options,
     headers: authHeaders(env, {
@@ -51,7 +54,10 @@ export async function github(env, path, options = {}) {
 }
 
 // يقرأ استجابة نصية (مثل سجلات GitHub Actions) ويُبقي آخر maxChars حرف منها.
+// ملاحظة: متابعة إعادة التوجيه إلى مخزن السجلات قد تُحتسب استدعاءً إضافيًا، فنحتسب اثنين.
 export async function githubText(env, path, maxChars = 200000) {
+  if (env.budget) env.budget.spend(2);
+
   const response = await fetch(GITHUB_API + path, {
     headers: authHeaders(env),
     redirect: "follow"
