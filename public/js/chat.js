@@ -167,7 +167,7 @@ function ciStatus(ci) {
   switch (ci.state) {
     case "success": return { ok: true, text: "نجحت فحوصات CI" + repaired + "." };
     case "failure": return { ok: false, text: "ما زالت فحوصات CI فاشلة" + failed + repaired + ". " + (ci.reason || "راجع الـ Pull Request.") };
-    case "pending": return { ok: false, text: "فحوصات CI لم تكتمل بعد" + repaired + ". تابعها من الـ Pull Request." };
+    case "pending": return { ok: false, text: "فحوصات CI لم تكتمل بعد" + repaired + ". " + (ci.reason || "تابعها من الـ Pull Request.") };
     case "none": return { ok: true, text: "لا توجد فحوصات CI في هذا المستودع." };
     default: return { ok: false, text: "تعذر قراءة فحوصات CI" + (ci.reason ? ": " + ci.reason : ".") };
   }
@@ -205,7 +205,23 @@ export function showResult(result) {
   if (merge) card.appendChild(note(merge));
 
   const ci = ciStatus(result.ci);
-  if (ci) card.appendChild(h("p", { class: "ai-note" + (ci.ok ? "" : " warn"), text: ci.text }));
+  if (ci) {
+    card.appendChild(h("p", { class: "ai-note" + (ci.ok ? "" : " warn"), text: ci.text }));
+
+    // روابط الفحوصات الفاشلة (مثل Workers Builds) لتفتحها وترى سبب الفشل الذي لا يقرؤه الوكيل.
+    const links = result.ci && Array.isArray(result.ci.links) ? result.ci.links : [];
+    for (const link of links.slice(0, 3)) {
+      if (typeof link.url !== "string" || !/^https:\/\//.test(link.url)) continue;
+
+      card.appendChild(h("a", {
+        class: "ai-note warn",
+        href: link.url,
+        target: "_blank",
+        rel: "noopener noreferrer",
+        text: "افتح تفاصيل الفحص: " + link.name
+      }));
+    }
+  }
 
   if (Array.isArray(result.skills) && result.skills.length) {
     card.appendChild(note("المهارات المستخدمة: " + result.skills.join("، ")));
