@@ -46,11 +46,31 @@ export function parseModelJSON(text, what = "التوليد") {
   }
 }
 
+// شكل Responses API (يستخدمه GPT-OSS على Workers AI): output = [{type:"reasoning"}, {type:"message", content:[{type:"output_text", text}]}]
+// نأخذ نصوص رسالة الإجابة فقط ونتجاهل عناصر الاستدلال.
+function fromResponsesOutput(output) {
+  if (!Array.isArray(output)) return null;
+
+  const parts = [];
+  for (const item of output) {
+    if (!item || item.type !== "message" || !Array.isArray(item.content)) continue;
+
+    for (const piece of item.content) {
+      if (piece && typeof piece.text === "string" && (!piece.type || piece.type === "output_text" || piece.type === "text")) {
+        parts.push(piece.text);
+      }
+    }
+  }
+
+  const joined = parts.join("").trim();
+  return joined || null;
+}
+
 /**
- * يستخرج النص من أشكال الاستجابة الشائعة في Workers AI.
+ * يستخرج النص من أشكال الاستجابة الشائعة في Workers AI (response / choices / output).
  * يُرجع null إن لم يجد نصًا بدل تمرير undefined إلى المراحل التالية.
  */
-function extractResponseText(result) {
+export function extractResponseText(result) {
   const candidates = [
     result?.response,
     result?.result?.response,
@@ -81,11 +101,12 @@ function extractResponseText(result) {
     }
   }
 
-  return null;
+  return fromResponsesOutput(result?.output) || fromResponsesOutput(result?.result?.output);
 }
 
 /**
- * يستدعي Cloudflare Workers AI ويعيد النص الناتج.
+ * يستدعي Cloudflare Workers AI بنموذج الخادم الأساسي (MODEL) ويعيد النص الناتج.
+ * مسار قديم/مبسّط: التوجيه الذكي يستخدم router/call-model.js بمعاملات كل نموذج.
  * كل استدعاء يُحتسب من ميزانية الطلب (env.budget) إن وُجدت.
  */
 export async function askAI(env, messages, maxTokens, timeoutMs, label) {
@@ -133,4 +154,19 @@ export async function askAI(env, messages, maxTokens, timeoutMs, label) {
   }
 
   return text;
+}
+
+// واجهة النموذج التي تستهلكها المراحل (explore/select/generate/review):
+//   call({stage, messages, maxTokens, timeoutMs, label}) → { text, model }
+//   accept({stage, model}) / reject({stage, model, kind})  ← تُبلَّغ بعد التحقق من صلاحية الناتج
+// هذه النسخة تستخدم نموذج الخادم الأساسي دون توجيه؛ الموجّه الذكي يوفّر النسخة الكاملة.
+export function legacyAI(env) {
+  return {
+    async call({ messages, maxTokens, timeoutMs, label }) {
+      const text = await askAI(env, messages, maxTokens, timeoutMs, label);
+      return { text, model: cleanSecret(env.MODEL) || DEFAULT_MODEL };
+    },
+    accept() {},
+    reject() {}
+  };
 }
