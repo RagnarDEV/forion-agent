@@ -125,6 +125,14 @@ export async function runPipeline(rootEnv, input, io) {
 
   ensureAlive();
 
+  // النشر عدة استدعاءات متتابعة؛ لا نبدأه دون رصيد كافٍ حتى لا يُترك فرع أو commit ناقص.
+  if (!env.budget.canAfford(LIMITS.publishCost)) {
+    throw new UserError(
+      "لا تكفي ميزانية الاستدعاءات الخارجية لإنشاء الفرع وPull Request في هذا الطلب، فلم يُنشأ شيء. " +
+      "قلّل عدد الملفات أو عطّل الاستكشاف الذكي من الإعدادات ثم أعد المحاولة."
+    );
+  }
+
   stage("publish", "جارٍ إنشاء الفرع وPull Request…");
 
   const published = await publishChanges(env, {
