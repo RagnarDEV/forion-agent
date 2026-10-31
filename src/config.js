@@ -38,6 +38,7 @@ export const LIMITS = Object.freeze({
   // فقط إن كانت خطتك تسمح بأكثر (راجع حدود Workers).
   subrequestLimit: 45,
   reserveAfterExplore: 24,    // يُحجز لما بعد الاستكشاف: الاختيار والقراءة والتوليد والنشر
+  publishCost: 7,             // النشر: 5 استدعاءات GitHub + الدمج التلقائي + هامش. لا يبدأ دون رصيد كافٍ
   repairMinBudget: 12         // أدنى رصيد لبدء جولة إصلاح ذاتي (سجلات + توليد + commit + إعادة فحص)
 });
 
