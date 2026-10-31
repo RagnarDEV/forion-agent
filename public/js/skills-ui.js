@@ -6,6 +6,9 @@ import { toast } from "./toast.js";
 
 // إدارة المهارات من الواجهة: عرض، تفعيل (تلقائي/دائم/معطّل)، إضافة، تعديل، حذف، استيراد وتصدير.
 // المهارات تُحفظ في هذا المتصفح وتُرسل مع كل طلب؛ المدمجة تأتي من الخادم (GET /api/skills).
+//
+// تنبيه: Element.replaceChildren الأصلية لا تُسطّح المصفوفات (تعرضها نصًا "[object HTMLElement]").
+// لذلك تُمرَّر القوائم دائمًا عبر h() التي تُسطّح الأبناء، أو بالنشر (...).
 
 const MODES = [["auto", "تلقائي"], ["always", "دائم"], ["off", "معطّل"]];
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -285,6 +288,15 @@ function draw() {
     }
   });
 
+  // كل القوائم داخل h() (تُسطّح الأبناء) بدل تمريرها مباشرة إلى replaceChildren.
+  const mine = custom.length
+    ? h("div", { class: "skill-list" }, custom.map(skill => card(skill, true)))
+    : h("p", { class: "sub empty", text: "لا توجد مهارات مخصصة بعد. أضف مهارة جديدة أو انسخ إحدى المدمجة وعدّلها." });
+
+  const builtin = state.builtinSkills.length
+    ? h("div", { class: "skill-list" }, state.builtinSkills.map(skill => card(skill, false)))
+    : h("p", { class: "sub empty", text: "تعذر تحميل المهارات المدمجة من الخادم." });
+
   root.replaceChildren(
     h("p", { class: "sub", text: "المهارات تعليمات إضافية تُرسل للنموذج عند الحاجة. «تلقائي» يفعّلها عند ظهور كلمات التفعيل في طلبك، و«دائم» يرسلها مع كل طلب." }),
     h("div", { class: "skill-tools" },
@@ -294,13 +306,9 @@ function draw() {
     ),
     picker,
     h("h3", { class: "group-title", text: "مهاراتي (" + custom.length + ")" }),
-    custom.length
-      ? custom.map(skill => card(skill, true))
-      : h("p", { class: "sub empty", text: "لا توجد مهارات مخصصة بعد. أضف مهارة جديدة أو انسخ إحدى المدمجة وعدّلها." }),
+    mine,
     h("h3", { class: "group-title", text: "المهارات المدمجة (" + state.builtinSkills.length + ")" }),
-    state.builtinSkills.length
-      ? state.builtinSkills.map(skill => card(skill, false))
-      : h("p", { class: "sub empty", text: "تعذر تحميل المهارات المدمجة من الخادم." })
+    builtin
   );
 }
 
