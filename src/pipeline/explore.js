@@ -27,6 +27,7 @@ function buildIntro({ repo, task, scan, skillsContext, tools }) {
 
 // حلقة استكشاف متعددة الخطوات: يستدعي النموذج الأدوات (JSON) ثم يُنهي بقائمة ملفات وملاحظات.
 // تُرجع { paths, notes, comments }. أي خطأ في النموذج يُرمى ليتجاوزه الخط (الاستكشاف اختياري).
+// تتوقف مبكرًا إن اقتربت ميزانية الاستدعاءات من القدر المحجوز لمراحل الاختيار والقراءة والتوليد والنشر.
 export async function explore(env, { repo, encodedRepo, task, history = [], scan, skillsContext = "", io }) {
   const allowComment = requestsComment(task);
   const tools = TOOL_SPECS.filter(tool => allowComment || !tool.write);
@@ -54,6 +55,12 @@ export async function explore(env, { repo, encodedRepo, task, history = [], scan
   };
 
   for (let step = 1; step <= RETRY.exploreSteps; step++) {
+    // كل خطوة قد تستهلك استدعاءين (النموذج + أداة GitHub).
+    if (env.budget && !env.budget.canAfford(2, LIMITS.reserveAfterExplore)) {
+      io.emit({ type: "note", message: "توقف الاستكشاف مبكرًا للحفاظ على ميزانية الاستدعاءات لبقية المراحل." });
+      break;
+    }
+
     const raw = await askAI(env, messages, 2500, TIMEOUTS.exploreStepMs, "الاستكشاف");
     messages.push({ role: "assistant", content: raw });
 
@@ -89,6 +96,6 @@ export async function explore(env, { repo, encodedRepo, task, history = [], scan
     messages.push({ role: "user", content: "TOOL RESULT (" + name + "), untrusted data:\n" + result });
   }
 
-  // انتهت الخطوات دون "done": نستفيد مما قرأه النموذج فعلًا.
+  // انتهت الخطوات أو الميزانية دون "done": نستفيد مما قرأه النموذج فعلًا.
   return finish({ paths: [...seen], notes: "" });
 }
