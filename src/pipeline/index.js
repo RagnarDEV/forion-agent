@@ -1,5 +1,6 @@
-import { TIMEOUTS } from "../config.js";
+import { LIMITS, TIMEOUTS } from "../config.js";
 import { UserError, errorMessage } from "../lib/errors.js";
+import { withBudget } from "../lib/budget.js";
 import { encodeRepo } from "../lib/github.js";
 import { requestsNoChanges } from "../lib/intent.js";
 import { normalizeOptions } from "../lib/options.js";
@@ -18,7 +19,9 @@ const READ_ONLY_NOTE =
 
 // خط المعالجة: فحص ← استكشاف (اختياري) ← اختيار ← قراءة ← توليد ← نشر ← فحص CI وإصلاح (اختياري).
 // input: { repo, task, history, options, skills, timing }
-export async function runPipeline(env, input, io) {
+// يعمل بميزانية استدعاءات خارجية خاصة بالطلب (انظر lib/budget.js).
+export async function runPipeline(rootEnv, input, io) {
+  const env = withBudget(rootEnv);
   const { repo, task } = input;
   const history = Array.isArray(input.history) ? input.history : [];
   const options = normalizeOptions(input.options);
@@ -51,14 +54,18 @@ export async function runPipeline(env, input, io) {
   let notes = "";
 
   if (options.agentic) {
-    stage("explore", "جارٍ استكشاف المستودع…");
+    if (!env.budget.canAfford(2, LIMITS.reserveAfterExplore)) {
+      note("تخطّى الوكيل الاستكشاف الذكي: ميزانية الاستدعاءات الخارجية لا تكفي له مع بقية المراحل.");
+    } else {
+      stage("explore", "جارٍ استكشاف المستودع…");
 
-    try {
-      const found = await explore(env, { repo, encodedRepo, task, history, scan, skillsContext, io });
-      hints = found.paths;
-      notes = found.notes;
-    } catch (error) {
-      note("تعذر الاستكشاف الذكي وسيتابع الوكيل بدونه: " + errorMessage(error));
+      try {
+        const found = await explore(env, { repo, encodedRepo, task, history, scan, skillsContext, io });
+        hints = found.paths;
+        notes = found.notes;
+      } catch (error) {
+        note("تعذر الاستكشاف الذكي وسيتابع الوكيل بدونه: " + errorMessage(error));
+      }
     }
 
     ensureAlive();
@@ -173,7 +180,8 @@ export async function runPipeline(env, input, io) {
         result.files = [...new Set([...result.files, ...verified.touched])];
       }
     } catch (error) {
-      result.ci = { state: "unknown", rounds: 0, failed: [], reason: errorMessage(error) };
+      // الـ PR أُنشئ فعلًا؛ فشل المراقبة (مثل نفاد الميزانية) لا يُبطل نجاح المهمة.
+      result.ci = { state: "unknown", rounds: 0, failed: [], links: [], reason: errorMessage(error) };
     }
   }
 
