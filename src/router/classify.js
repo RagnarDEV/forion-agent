@@ -12,6 +12,9 @@ const PATTERNS = [
   ["feature", /\badd\b|implement|\bbuild\b|feature|create|اضف|انشئ|اضافة|ميزه|ميزة|طور|نفذ/]
 ];
 
+// \b لا تعمل مع الحروف العربية، فنستخدم (?=\s|$) لنهاية الكلمة.
+const QUESTION = /(?:^|\s)(?:اشرح|لماذا|كيف|ما هو|ما هي|explain|why|how|what)(?=\s|$)/;
+
 // مسارات ملفات مذكورة صراحةً في الطلب (تقدير لعدد الملفات).
 const PATH_MENTION = /[A-Za-z0-9_@.\-/]+\.(?:js|mjs|cjs|ts|tsx|jsx|json|css|html|md|py|go|rs|java|yml|yaml|toml|sh)\b/g;
 
@@ -28,9 +31,7 @@ export function classifyTask({ task, scan = null } = {}) {
   }
 
   // أسئلة وتحليل: لا فعل تعديل في الطلب أو طُلب صراحةً بلا تغييرات.
-  if (readOnly || (kind === "edit" && /(?:^|\s)(?:اشرح|لماذا|كيف|ما هو|ما هي|explain|why|how|what)\b/.test(text))) {
-    kind = "question";
-  }
+  if (readOnly || (kind === "edit" && QUESTION.test(text))) kind = "question";
 
   const mentioned = new Set(text.match(PATH_MENTION) || []).size;
   const taskChars = text.length;
@@ -57,7 +58,7 @@ export function classifyTask({ task, scan = null } = {}) {
     readOnly,
     filesEstimate: Math.min(filesEstimate, LIMITS.maxSelectFiles),
     contextChars: Math.min(repoBytes, LIMITS.maxTotalBytes) + taskChars,
-    // استدلال أعمق: مهام معقدة، أو إصلاح فحوصات/أخطاء متعددة الملفات.
+    // استدلال أعمق: مهام معقدة، أو إصلاح فحوصات متعددة الملفات.
     deepReasoning: complexity === "high" || (kind === "ci" && complexity !== "low"),
     // كل مراحل الخط تتطلب JSON صارمًا (بروتوكول JSON، لا Function Calling الأصلي).
     needsJson: true,
