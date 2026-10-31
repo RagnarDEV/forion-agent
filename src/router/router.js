@@ -52,6 +52,10 @@ export function createRouter({ env, io = null, task, scan = null, settings, ledg
     return order.filter(id => !exclude.has(id) && !unavailable.has(id));
   }
 
+  // فشل المهمة الحالية يخفّض أفضلية النموذج الفاشل فقط عندما يكون التبديل مسموحًا وضمن حده.
+  const failureMemory = () =>
+    settings.fallback && !pinned && switches < MAX_SWITCHES_PER_TASK ? failures : {};
+
   function rank(stage, exclude, promptChars, maxTokens) {
     return rankModels({
       stage,
@@ -59,7 +63,7 @@ export function createRouter({ env, io = null, task, scan = null, settings, ledg
       candidates: candidatesNow(exclude),
       stats,
       ledger,
-      failures,
+      failures: failureMemory(),
       promptChars,
       maxTokens,
       profile
