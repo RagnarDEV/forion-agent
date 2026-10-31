@@ -86,6 +86,7 @@ function extractResponseText(result) {
 
 /**
  * يستدعي Cloudflare Workers AI ويعيد النص الناتج.
+ * كل استدعاء يُحتسب من ميزانية الطلب (env.budget) إن وُجدت.
  */
 export async function askAI(env, messages, maxTokens, timeoutMs, label) {
   const model = cleanSecret(env.MODEL) || DEFAULT_MODEL;
@@ -97,6 +98,8 @@ export async function askAI(env, messages, maxTokens, timeoutMs, label) {
   if (!Array.isArray(messages) || messages.length === 0) {
     throw new UserError("تعذر إرسال الطلب إلى النموذج: قائمة الرسائل فارغة أو غير صالحة.");
   }
+
+  if (env.budget) env.budget.spend();
 
   let result;
 

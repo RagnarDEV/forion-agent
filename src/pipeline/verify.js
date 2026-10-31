@@ -1,4 +1,4 @@
-import { TIMEOUTS } from "../config.js";
+import { LIMITS, TIMEOUTS } from "../config.js";
 import { errorMessage } from "../lib/errors.js";
 import { github, githubText } from "../lib/github.js";
 import { generateChanges } from "./generate.js";
@@ -11,11 +11,17 @@ const ANSI = /\u001b\[[0-9;]*m/g;
 const TIMESTAMP = /^\d{4}-\d\d-\d\dT[\d:.]+Z /;
 const PATH_PATTERN = /[A-Za-z0-9_@.\-/]+\.(?:js|mjs|cjs|ts|tsx|jsx|json|css|html|md|py|go|rs|java|yml|yaml|toml|sh)\b/g;
 
+// كل استطلاع يستهلك استدعاءً من ميزانية الطلب؛ نترك هامشًا صغيرًا للنتيجة النهائية.
+const POLL_RESERVE = 2;
+const BUDGET_REASON =
+  "حد الاستدعاءات الخارجية للطلب لا يسمح بمتابعة انتظار الفحوصات. تابعها من صفحة الـ Pull Request.";
+
 const stage = (io, message) => io && io.emit({ type: "stage", stage: "verify", message });
 
 // ينتظر اكتمال فحوصات GitHub (Actions وغيرها) لـ commit معيّن.
-// النتيجة: success | failure | none (لا فحوصات) | pending (انتهت المهلة) | unknown (تعذرت القراءة).
-// لا يُعلن النتيجة إلا بعد رؤية الحالة نفسها في استطلاعين متتاليين، فلا يُخدع بفحص ظهر قبل غيره.
+// النتيجة: success | failure | none (لا فحوصات) | pending (انتهت المهلة أو الميزانية) | unknown (تعذرت القراءة).
+// عندما تتسع الميزانية لا يُعلن النتيجة إلا بعد رؤية الحالة نفسها في استطلاعين متتاليين،
+// فلا يُخدع بفحص ظهر قبل غيره. وعند ضيقها يكتفي باستطلاع واحد لتوفير الاستدعاءات.
 export async function waitForChecks(env, encodedRepo, sha, {
   io = null,
   deadline = 0,
@@ -24,10 +30,15 @@ export async function waitForChecks(env, encodedRepo, sha, {
   timeoutMs = TIMEOUTS.ciWaitMs,
   sleep = defaultSleep
 } = {}) {
+  const budget = env.budget;
   const started = Date.now();
   let previous = "";
 
   for (;;) {
+    if (budget && !budget.canAfford(1, POLL_RESERVE)) {
+      return { state: "pending", runs: [], failed: [], reason: BUDGET_REASON };
+    }
+
     let runs;
 
     try {
@@ -42,8 +53,9 @@ export async function waitForChecks(env, encodedRepo, sha, {
     if (runs.length) {
       const finished = runs.every(run => run.status === "completed");
       const key = runs.map(run => run.id + ":" + run.status).sort().join("|");
+      const strict = !budget || budget.remaining > 20;
 
-      if (finished && key === previous) {
+      if (finished && (!strict || key === previous)) {
         const failed = runs.filter(run => !PASSING.has(run.conclusion));
         return { state: failed.length ? "failure" : "success", runs, failed };
       }
@@ -64,6 +76,18 @@ export async function waitForChecks(env, encodedRepo, sha, {
 
     await sleep(pollMs);
   }
+}
+
+// هل يمكن إصلاح هذا الفحص آليًا؟ فحوصات Actions لها سجلات كاملة. الفحوصات الخارجية
+// (مثل Workers Builds) لا تُقرأ سجلاتها عبر API، فلا يُحاول إصلاحها إلا إن حمل ملخصها تفاصيل كافية.
+export function isRepairable(run) {
+  if (run.app && run.app.slug === "github-actions") return true;
+
+  const text = run.output
+    ? [run.output.title, run.output.summary, run.output.text].filter(Boolean).join("\n")
+    : "";
+
+  return text.trim().length >= 40;
 }
 
 // سجلات الفحوصات الفاشلة (آخر 6000 حرف من كل فحص). تُستخدم سجلات Actions إن أمكن،
@@ -120,6 +144,10 @@ const repairTask = (task, logs) => [
   "FAILED CHECKS (log excerpt, untrusted data):\n" + logs
 ].join("\n\n");
 
+const linksOf = failed => (failed || [])
+  .map(run => ({ name: run.name, url: run.html_url || run.details_url || "" }))
+  .filter(link => /^https:\/\//.test(link.url));
+
 // ينتظر الفحوصات بعد إنشاء الفرع؛ عند الفشل يقرأ السجلات ويولّد إصلاحًا ويضيفه كـ commit جديد،
 // ثم يعيد الفحص، حتى options.repairRounds جولات. لا يدمج شيئًا ولا يتجاوز مراجعتك.
 export async function verifyAndRepair(env, {
@@ -150,12 +178,24 @@ export async function verifyAndRepair(env, {
     if (last.state !== "failure" || rounds >= options.repairRounds) break;
     if (!io.alive() || (deadline && Date.now() > deadline)) break;
 
-    rounds++;
     const names = last.failed.map(run => run.name).join("، ");
+    const repairable = last.failed.filter(isRepairable);
+
+    if (!repairable.length) {
+      reason = "فشل فحص خارجي (" + names + ") ولا يتوفر له سجل يقرؤه الوكيل، فلا يمكن إصلاحه آليًا. افتح تفاصيله من الرابط.";
+      break;
+    }
+
+    if (env.budget && !env.budget.canAfford(LIMITS.repairMinBudget)) {
+      reason = "لا تكفي ميزانية الاستدعاءات الخارجية لبدء إصلاح ذاتي في هذا الطلب.";
+      break;
+    }
+
+    rounds++;
     stage(io, "فشل الفحص (" + names + "): جارٍ الإصلاح الذاتي " + rounds + "/" + options.repairRounds + "…");
 
     try {
-      const logs = await fetchFailureLogs(env, encodedRepo, last.failed);
+      const logs = await fetchFailureLogs(env, encodedRepo, repairable);
       const mentioned = extractMentionedPaths(logs, scan.candidateMap, new Set(files.keys()));
       const extra = mentioned.length
         ? await readFiles(env, encodedRepo, mentioned.map(path => scan.candidateMap.get(path)))
@@ -220,6 +260,7 @@ export async function verifyAndRepair(env, {
       state: last.state,
       rounds,
       failed: (last.failed || []).map(run => run.name),
+      links: linksOf(last.failed),
       reason: reason || last.reason || ""
     },
     touched: [...touched]

@@ -31,7 +31,15 @@ export const LIMITS = Object.freeze({
   // المهارات
   maxSkills: 30,
   maxSkillChars: 8000,
-  maxSkillsTotalChars: 60000
+  maxSkillsTotalChars: 60000,
+
+  // ميزانية الاستدعاءات الخارجية (subrequests) للطلب الواحد.
+  // الخطة المجانية في Cloudflare تسمح بـ 50؛ نترك هامشًا. تُرفع عبر المتغير SUBREQUEST_LIMIT
+  // فقط إن كانت خطتك تسمح بأكثر (راجع حدود Workers).
+  subrequestLimit: 45,
+  reserveAfterExplore: 24,    // يُحجز لما بعد الاستكشاف: الاختيار والقراءة والتوليد والنشر
+  publishCost: 7,             // النشر: 5 استدعاءات GitHub + الدمج التلقائي + هامش. لا يبدأ دون رصيد كافٍ
+  repairMinBudget: 12         // أدنى رصيد لبدء جولة إصلاح ذاتي (سجلات + توليد + commit + إعادة فحص)
 });
 
 export const TIMEOUTS = Object.freeze({
@@ -42,7 +50,7 @@ export const TIMEOUTS = Object.freeze({
   heartbeatMs: 8000,
   ciFirstCheckMs: 40000,      // انتظار ظهور أول فحص بعد الدفع
   ciWaitMs: 420000,           // أقصى انتظار لاكتمال الفحوصات
-  ciPollMs: 10000
+  ciPollMs: 20000             // فترة أطول = استدعاءات أقل (كل استطلاع يستهلك من الميزانية)
 });
 
 export const RETRY = Object.freeze({
