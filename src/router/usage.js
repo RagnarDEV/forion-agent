@@ -1,8 +1,11 @@
 // قياس الاستهلاك. نعتمد على بيانات usage التي يُرجعها النموذج فعليًا، ولا نخمّن:
 //  - عند توفر usage: neurons = (مدخل × سعر المدخل + مخرج × سعر المخرج) / مليون، بأسعار الوثائق الرسمية.
-//  - عند غيابه: نحسب حدًا أعلى تحفظيًا (توكن لكل حرف للمدخل، وmax_tokens للمخرج) ونعلّمه "approx".
+//  - عند غيابه: حد أعلى رياضي (لا تقدير): عدد التوكنات لا يتجاوز عدد البايتات (UTF-8)، ونعلّمه "approx".
 
 const number = value => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null);
+
+const encoder = new TextEncoder();
+export const byteLength = text => encoder.encode(String(text || "")).length;
 
 // يدعم شكلي الاستخدام: chat (prompt/completion_tokens) وResponses (input/output_tokens).
 export function extractUsage(result) {
@@ -22,12 +25,21 @@ export function extractUsage(result) {
   return { known: true, inputTokens: input ?? 0, outputTokens: output ?? 0 };
 }
 
+const cost = (info, inputTokens, outputTokens) =>
+  (inputTokens / 1e6) * info.rates.inputPerM + (outputTokens / 1e6) * info.rates.outputPerM;
+
 // Neurons الفعلية من usage المعروف؛ null إن تعذّر (نموذج بلا أسعار أو usage مجهول).
 export function neuronsFor(info, usage) {
   if (!info || !info.rates || !usage || !usage.known) return null;
 
-  return (usage.inputTokens / 1e6) * info.rates.inputPerM +
-         (usage.outputTokens / 1e6) * info.rates.outputPerM;
+  return cost(info, usage.inputTokens, usage.outputTokens);
+}
+
+// حد أعلى مؤكد لما استُهلك عند غياب usage: كل توكن يمثّل بايتًا واحدًا على الأقل، والمخرج لا يتجاوز max_tokens.
+export function upperBoundNeurons(info, { promptBytes, outputBytes, maxTokens }) {
+  if (!info || !info.rates) return 0;
+
+  return cost(info, promptBytes, Math.min(maxTokens, outputBytes));
 }
 
 // نسبة التوكنات للأحرف ومتوسط المخرجات كما قيست فعليًا (من إحصاءات الاستخدام الحقيقية). null قبل توفر عينات كافية.
@@ -55,5 +67,5 @@ export function estimateNeurons(info, { promptChars, maxTokens, observed = null 
     ? Math.min(maxTokens, Math.max(200, observed.avgOutputTokens * 1.5))
     : maxTokens;
 
-  return (inputTokens / 1e6) * info.rates.inputPerM + (outputTokens / 1e6) * info.rates.outputPerM;
+  return cost(info, inputTokens, outputTokens);
 }
