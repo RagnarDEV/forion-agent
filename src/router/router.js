@@ -5,7 +5,7 @@ import { classifyTask } from "./classify.js";
 import { ModelCallError, QUOTA_MESSAGE, QuotaExhaustedError } from "./errors.js";
 import { rankModels } from "./policy.js";
 import { recordOutcome, statKey } from "./stats.js";
-import { neuronsFor } from "./usage.js";
+import { byteLength, neuronsFor, upperBoundNeurons } from "./usage.js";
 
 // الموجّه الذكي: يقرر لكل مرحلة أي نموذج يُستخدم، ومتى ينتقل إلى الآخر، ويتعلم من النتائج المتحقق منها.
 // قواعد ثابتة:
@@ -149,15 +149,23 @@ export function createRouter({ env, io = null, task, scan = null, settings, ledg
           caps: profile && profile.models ? profile.models[choice.id] : null
         });
 
-        // المحاسبة: usage الفعلي بأسعار الوثائق إن وُجد، وإلا الحد الأعلى المتحفّظ المعلَّم بـ approx.
+        // المحاسبة: usage الفعلي بأسعار الوثائق إن وُجد، وإلا حد أعلى مؤكد (بايتات المدخل والمخرج) معلَّم approx.
         const actual = neuronsFor(choice.info, out.usage);
-        ledger.add(actual === null ? choice.estimate : actual, { approx: actual === null });
+        const spent = actual === null
+          ? upperBoundNeurons(choice.info, {
+              promptBytes: byteLength(messages.map(message => message.content).join("")),
+              outputBytes: byteLength(out.text),
+              maxTokens
+            })
+          : actual;
+
+        ledger.add(spent, { approx: actual === null });
         emitUsage();
 
         pending[stage] = {
           model: choice.id,
           latencyMs: out.latencyMs,
-          neurons: actual === null ? choice.estimate : actual,
+          neurons: spent,
           usage: out.usage,
           promptChars
         };
