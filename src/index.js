@@ -4,6 +4,7 @@ import { errorMessage, errorStatus } from "./lib/errors.js";
 import { handleRepos } from "./routes/repos.js";
 import { handleTask } from "./routes/task.js";
 import { handleSkills } from "./routes/skills.js";
+import { handleProbe } from "./routes/router.js";
 import { handleIcon, isIconPath } from "./routes/icons.js";
 
 // الواجهة تُقدَّم من مجلد public بواسطة Cloudflare Workers Static Assets.
@@ -12,7 +13,8 @@ import { handleIcon, isIconPath } from "./routes/icons.js";
 const ROUTES = new Map([
   ["GET /api/repos", handleRepos],
   ["GET /api/skills", handleSkills],
-  ["POST /api/task", handleTask]
+  ["POST /api/task", handleTask],
+  ["POST /api/router/probe", handleProbe]
 ]);
 
 function serveStatic(request, env) {
