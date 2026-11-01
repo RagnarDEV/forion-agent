@@ -19,7 +19,10 @@ const REASONING_STAGES = new Set(["generate", "repair", "review"]);
 // GPT-OSS أخفض قليلًا في المخرجات، فيُفضَّل في مراحل الاستدلال عند المهام العميقة.
 function priorScore(modelId, stage, cls) {
   if (modelId === GLM) {
-    return { score: cls.complexity === "low" ? 80 : 70, why: cls.complexity === "low" ? "مهمة بسيطة: الأرخص على المدخلات" : "الأساس الأرخص على المدخلات" };
+    return {
+      score: cls.complexity === "low" ? 80 : 70,
+      why: cls.complexity === "low" ? "مهمة بسيطة: الأرخص على المدخلات" : "الأساس الأرخص على المدخلات"
+    };
   }
 
   if (modelId === GPT_OSS) {
@@ -36,13 +39,11 @@ function priorScore(modelId, stage, cls) {
 }
 
 // سبب استبعاد النموذج لهذه المرحلة، أو null إن كان صالحًا.
+// GLM هو الأساس المعتمد حاليًا: لا يُستبعد بنتيجة اختبار (فشل عابر في الاختبار لا يجب أن يعطّل الوكيل).
 export function capabilityGate(modelId, stage, profile) {
-  const caps = profile && profile.models ? profile.models[modelId] : null;
+  if (modelId === GLM) return null;
 
-  // GLM هو الأساس المعتمد؛ لا يُستبعد إلا إن فشل اختبار توافقه صراحةً.
-  if (modelId === GLM) {
-    return caps && caps.ok === false ? "فشل اختبار توافق GLM" : null;
-  }
+  const caps = profile && profile.models ? profile.models[modelId] : null;
 
   if (!caps) return "لم يُختبر توافقه بعد (شغّل «اختبار التوافق» من الإعدادات)";
   if (caps.ok !== true || caps.jsonOk !== true) return "فشل اختبار التوافق أو إنتاج JSON";
@@ -53,7 +54,7 @@ export function capabilityGate(modelId, stage, profile) {
   return null;
 }
 
-// يرتّب المرشحين. كل صف: { id, info, score, estimate, excluded, why[] }
+// يرتّب المرشحين. كل صف: { id, info, score, estimate, excluded, why[], measured }
 export function rankModels({ stage, cls, candidates, stats, ledger, failures, promptChars, maxTokens, profile }) {
   const rows = candidates.map(id => {
     const info = modelInfo(id);
