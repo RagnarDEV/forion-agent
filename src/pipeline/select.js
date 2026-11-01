@@ -1,13 +1,16 @@
 import { LIMITS, TIMEOUTS } from "../config.js";
 import { UserError } from "../lib/errors.js";
-import { askAI, parseModelJSON } from "../lib/ai.js";
+import { legacyAI, parseModelJSON } from "../lib/ai.js";
 import { chatMessages } from "../lib/history.js";
 
-// يختار الملفات الموجودة اللازمة للطلب.
+const SELECT_ATTEMPTS = 2;
+
+// يختار الملفات الموجودة اللازمة للطلب (مرحلة تحليل الملفات).
 //  - hints: ملفات رشّحتها مرحلة الاستكشاف (تُقدَّم على غيرها).
 //  - allowCreate: يسمح بألا يُختار أي ملف موجود (الطلب إنشاء ملفات فقط).
+//  - ai: واجهة النموذج (الموجّه الذكي)؛ محاولتان: الثانية قد تُنفَّذ بنموذج آخر بعد فشل التنسيق.
 // يُرجع { files }.
-export async function selectFiles(env, { task, history = [], scan, allowCreate = true, hints = [], skillsContext = "" }) {
+export async function selectFiles(env, { task, history = [], scan, allowCreate = true, hints = [], skillsContext = "", ai = legacyAI(env) }) {
   if (typeof task !== "string" || !task.trim()) {
     throw new UserError("الطلب المطلوب تنفيذه فارغ أو غير صالح.");
   }
@@ -51,24 +54,43 @@ export async function selectFiles(env, { task, history = [], scan, allowCreate =
       "CANDIDATE FILES (path | bytes):\n" + list
     ].filter(Boolean).join("\n\n");
 
-    const raw = await askAI(
-      env,
-      chatMessages(
-        "You are a careful software engineer. Return valid JSON only.",
-        history,
-        prompt,
-        { limit: 4, maxChars: 20000 }
-      ),
-      1500,
-      TIMEOUTS.selectMs,
-      "اختيار الملفات"
+    const messages = chatMessages(
+      "You are a careful software engineer. Return valid JSON only.",
+      history,
+      prompt,
+      { limit: 4, maxChars: 20000 }
     );
 
-    const parsed = parseModelJSON(raw, "اختيار الملفات");
+    let parsed = null;
+    let lastError = null;
 
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || !Array.isArray(parsed.paths)) {
-      throw new UserError("لم يُرجع النموذج قائمة ملفات صالحة. أعد المحاولة.");
+    for (let attempt = 1; attempt <= SELECT_ATTEMPTS && !parsed; attempt++) {
+      const answer = await ai.call({
+        stage: "select",
+        messages,
+        maxTokens: 1500,
+        timeoutMs: TIMEOUTS.selectMs,
+        label: "اختيار الملفات"
+      });
+
+      try {
+        const candidate = parseModelJSON(answer.text, "اختيار الملفات");
+
+        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate) || !Array.isArray(candidate.paths)) {
+          throw new UserError("لم يُرجع النموذج قائمة ملفات صالحة. أعد المحاولة.");
+        }
+
+        parsed = candidate;
+        ai.accept({ stage: "select", model: answer.model });
+      } catch (error) {
+        if (!(error instanceof UserError)) throw error;
+
+        lastError = error;
+        ai.reject({ stage: "select", model: answer.model, kind: "format" });
+      }
     }
+
+    if (!parsed) throw lastError;
 
     const chosenByModel = parsed.paths.filter(path => typeof path === "string" && candidateMap.has(path));
     selectedPaths = [...new Set([...validHints, ...chosenByModel])];
