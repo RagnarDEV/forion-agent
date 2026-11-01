@@ -49,8 +49,9 @@ export async function handleTask(request, env, ctx) {
     repo,
     task,
     history: compactHistory(input.history),
-    // الخيارات والمهارات تُتحقق منها داخل الخط (normalizeOptions / buildRegistry).
+    // الخيارات والمهارات والتوجيه تُتحقق منها داخل الخط (normalizeOptions / buildRegistry / buildRouterContext).
     options: input.options,
-    skills: Array.isArray(input.skills) ? input.skills.slice(0, 100) : []
+    skills: Array.isArray(input.skills) ? input.skills.slice(0, 100) : [],
+    router: input.router
   });
 }
