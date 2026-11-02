@@ -30,10 +30,13 @@ async function parse(response) {
   }
 }
 
-export async function apiGet(path) {
+async function request(path, init) {
   let response;
   try {
-    response = await fetch(path, { headers: { "X-Admin-Token": state.token } });
+    response = await fetch(path, {
+      ...init,
+      headers: { "X-Admin-Token": state.token, ...(init && init.headers) }
+    });
   } catch {
     throw new Error(NET_BEFORE);
   }
@@ -49,17 +52,25 @@ export async function apiGet(path) {
   return data;
 }
 
-// يقرأ بث NDJSON: أحداث stage/note/ping ثم result أو error.
-// extras: { signal, options, skills } (الإعدادات والمهارات من لوحة الإعدادات).
+export const apiGet = path => request(path);
+
+export const apiPost = (path, body) => request(path, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body || {})
+});
+
+// يقرأ بث NDJSON: أحداث stage/note/route/usage/stat/ping ثم result أو error.
+// extras: { signal, options, skills, router } (الإعدادات والمهارات والتوجيه من لوحة الإعدادات).
 export async function runTask(repo, task, history, onEvent, extras = {}) {
-  const { signal, options, skills } = extras;
+  const { signal, options, skills, router } = extras;
   let response;
 
   try {
     response = await fetch("/api/task", {
       method: "POST",
       headers: { "X-Admin-Token": state.token, "Content-Type": "application/json" },
-      body: JSON.stringify({ repo, task, history, options, skills }),
+      body: JSON.stringify({ repo, task, history, options, skills, router }),
       signal
     });
   } catch {
