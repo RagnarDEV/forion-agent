@@ -1,15 +1,25 @@
 // النصوص المشتركة والمقترحات السريعة.
 
-// الخطوتان explore وverify تظهران فقط عند تفعيلهما من الإعدادات.
+// الخطوات explore وreview وverify اختيارية: explore/verify من الإعدادات، وreview تظهر فقط حين يقرر الموجّه إجراءها.
 export const STAGES = [
   ["scan", "فحص بنية المستودع"],
   ["explore", "استكشاف الكود والـ issues"],
   ["select", "اختيار الملفات المناسبة"],
   ["read", "قراءة الملفات"],
   ["generate", "تحليل الطلب وتوليد النتيجة"],
+  ["review", "مراجعة النتائج قبل النشر"],
   ["publish", "إنشاء الفرع وPull Request"],
   ["verify", "فحص CI والإصلاح الذاتي"]
 ];
+
+// أسماء مراحل النماذج كما تظهر في ملخص التوجيه.
+export const MODEL_STAGE_LABELS = {
+  explore: "الاستكشاف",
+  select: "تحليل الملفات",
+  generate: "التوليد",
+  repair: "إصلاح CI",
+  review: "المراجعة"
+};
 
 export const SUGGESTIONS = [
   {
