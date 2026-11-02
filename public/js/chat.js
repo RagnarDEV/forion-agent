@@ -3,7 +3,7 @@ import { icon } from "./icons.js";
 import { state } from "./state.js";
 import { renderRich } from "./rich-text.js";
 import { copyText } from "./clipboard.js";
-import { STAGES, SUGGESTIONS, WELCOME } from "./strings.js";
+import { MODEL_STAGE_LABELS, STAGES, SUGGESTIONS, WELCOME } from "./strings.js";
 
 const NEAR_PX = 140;
 const FAR_PX = 240;
@@ -75,8 +75,8 @@ export function renderWelcome(onPick) {
   updateToBottom();
 }
 
-// بطاقة تقدم حية: خطوات + تفاصيل + عدّاد زمن.
-// enabled: { explore: bool, verify: bool } لإخفاء الخطوات المعطّلة في الإعدادات.
+// بطاقة تقدم حية: خطوات + النموذج المستخدم لكل مرحلة وسبب اختياره + عدّاد زمن.
+// enabled: { explore: bool, verify: bool, review: bool } لإخفاء الخطوات المعطّلة (review تظهر عند وصول حدثها).
 export function createProgress(enabled = {}) {
   const msg = addMessage("assistant", "", { stick: true });
   msg.bubble.classList.add("progress");
@@ -94,8 +94,12 @@ export function createProgress(enabled = {}) {
     list.appendChild(li);
   });
 
+  // سطر لكل مرحلة نموذج: الاسم + السبب المختصر، وتنبيه عند التبديل.
+  const routeList = h("ul", { class: "routes", "aria-label": "النماذج المستخدمة" });
+  const routeItems = new Map();
+
   const elapsed = h("div", { class: "elapsed", text: "00:00" });
-  msg.bubble.append(list, h("div", { class: "bar", "aria-hidden": "true" }), elapsed);
+  msg.bubble.append(list, routeList, h("div", { class: "bar", "aria-hidden": "true" }), elapsed);
 
   const started = Date.now();
   const timer = setInterval(() => {
@@ -116,16 +120,34 @@ export function createProgress(enabled = {}) {
       if (current < 0) return;
 
       currentKey = stage;
+      items[stage].li.hidden = false;
+
       keys.forEach((key, index) => {
         items[key].li.className = "step" + (index < current ? " done" : index === current ? " active" : "");
         items[key].detail.textContent = index === current && text ? text : "";
       });
       $("sr").textContent = text || STAGES[current][1];
     },
-    // ملاحظة عابرة (مثل إعادة محاولة) تظهر تحت الخطوة الحالية.
+    // ملاحظة عابرة (إعادة محاولة، تبديل نموذج، تنبيه حصة) تظهر تحت الخطوة الحالية.
     note(text) {
       setDetail(text);
       if (text) $("sr").textContent = text;
+    },
+    // حدث route: النموذج المختار لمرحلة وسبب اختياره (يُحدَّث السطر عند التبديل).
+    route(event) {
+      const label = MODEL_STAGE_LABELS[event.stage] || event.stage;
+      const text = label + ": " + event.label + (event.switched ? " ⇄ (بدل " + event.switched.fromLabel + ")" : "") +
+        (event.reason ? " — " + event.reason : "");
+
+      let item = routeItems.get(event.stage);
+      if (!item) {
+        item = h("li", { class: "route" });
+        routeItems.set(event.stage, item);
+        routeList.appendChild(item);
+      }
+
+      item.classList.toggle("switched", Boolean(event.switched));
+      item.textContent = text;
     },
     stop() {
       clearInterval(timer);
@@ -173,13 +195,33 @@ function ciStatus(ci) {
   }
 }
 
+// ملخص النماذج المستخدمة وحصة اليوم.
+function routerSummary(router) {
+  if (!router || !Array.isArray(router.stages) || !router.stages.length) return null;
+
+  const used = router.stages
+    .map(item => (MODEL_STAGE_LABELS[item.stage] || item.stage) + ": " + item.label + (item.switched ? " ⇄" : ""))
+    .join(" · ");
+
+  const ledger = router.ledger || {};
+  const budget = state.router.settings ? state.router.settings.dailyBudget : 0;
+  const quota = budget
+    ? " — استهلكت هذه المهمة ≈" + Math.round(router.taskNeurons || 0) + " Neuron، واليوم ≈" + Math.round(ledger.neurons || 0) + " من " + budget +
+      (ledger.approx ? " (يشمل حدودًا عليا لاستدعاءات بلا بيانات استخدام)" : "")
+    : "";
+
+  return "النماذج: " + used + quota;
+}
+
 const note = text => h("p", { class: "ai-note", text });
 
 export function showResult(result) {
   const summary = String(result.summary || "").trim() || "اكتمل التنفيذ.";
   const message = addMessage("assistant", summary, { stick: true });
+  const routed = routerSummary(result.router);
 
   if (result.noChanges) {
+    if (routed) message.body.appendChild(note(routed));
     addActions(message.body, summary);
     state.history.push({ role: "assistant", content: summary });
     return;
@@ -204,6 +246,16 @@ export function showResult(result) {
   const merge = mergeStatus(result.autoMerge);
   if (merge) card.appendChild(note(merge));
 
+  if (result.review) {
+    const review = result.review;
+    card.appendChild(h("p", {
+      class: "ai-note" + (review.ok ? "" : " warn"),
+      text: review.ok
+        ? "مراجعة آلية: لا مشاكل مانعة" + (review.notes ? " (" + review.notes + " ملاحظة في وصف الـ PR)." : ".")
+        : "مراجعة آلية: " + review.blockers + " مشكلة" + (review.regenerated ? " أُعيد التوليد مرة لمعالجتها." : " مذكورة في وصف الـ PR.")
+    }));
+  }
+
   const ci = ciStatus(result.ci);
   if (ci) {
     card.appendChild(h("p", { class: "ai-note" + (ci.ok ? "" : " warn"), text: ci.text }));
@@ -222,6 +274,8 @@ export function showResult(result) {
       }));
     }
   }
+
+  if (routed) card.appendChild(note(routed));
 
   if (Array.isArray(result.skills) && result.skills.length) {
     card.appendChild(note("المهارات المستخدمة: " + result.skills.join("، ")));
