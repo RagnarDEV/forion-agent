@@ -10,6 +10,7 @@ import {
   loadPrefs, loadSkillState, skillsPayload,
   loadSavedToken, saveToken, forgetToken, normalizeToken
 } from "./prefs.js";
+import { applyLedger, applyStat, initRouterStore, routerPayload } from "./router-store.js";
 import { initSettings } from "./settings.js";
 import { initPwa } from "./pwa.js";
 
@@ -54,7 +55,9 @@ function showConnection(count) {
   $("conn").hidden = false;
   $("conn").classList.remove("offline");
   $("connText").textContent = count + " مستودع";
-  $("connModel").textContent = (state.model || "").split("/").pop();
+  // الوضع الافتراضي Smart Auto: لا نموذج ثابت. يظهر اسم النموذج فقط عند التثبيت من الخادم (تشخيص).
+  const pinned = state.router.catalog && state.router.catalog.pinned;
+  $("connModel").textContent = pinned ? pinned.split("/").pop() + " (مثبّت)" : "Smart Auto";
 }
 
 // تنبيه صريح عندما يكون الدمج التلقائي مفعّلًا حتى لا يُفاجَأ المستخدم.
@@ -88,6 +91,7 @@ async function loadRepos() {
   state.autoMerge = data.autoMerge === true;
   state.limits = data.limits || null;
   state.defaults = data.defaults || null;
+  state.router.catalog = data.router || null;
   setRepos(repos);
   renderMergeNote();
   $("task").maxLength = maxChars();
@@ -143,6 +147,18 @@ async function connect() {
   }
 }
 
+// أحداث التوجيه الذكي: تُحفظ فورًا (حتى لو فشلت المهمة لاحقًا لا تضيع محاسبة الحصة).
+function handleEvent(event, progress) {
+  switch (event.type) {
+    case "stage": progress.update(event.stage, event.message); break;
+    case "note": progress.note(event.message); break;
+    case "route": progress.route(event); break;
+    case "usage": applyLedger(event.ledger); break;
+    case "stat": applyStat(event.key, event.entry); break;
+    default: break;
+  }
+}
+
 async function sendMessage() {
   if (state.busy) return;
 
@@ -174,18 +190,18 @@ async function sendMessage() {
   const prior = state.history.slice(-16);
   state.history.push({ role: "user", content: task });
 
-  const progress = createProgress({ explore: state.prefs.agentic, verify: state.prefs.ciRepair });
+  const progress = createProgress({ explore: state.prefs.agentic, verify: state.prefs.ciRepair, review: false });
   progress.update("scan");
 
   try {
-    const result = await runTask(state.repo, task, prior, event => {
-      if (event.type === "stage") progress.update(event.stage, event.message);
-      else if (event.type === "note") progress.note(event.message);
-    }, {
+    const result = await runTask(state.repo, task, prior, event => handleEvent(event, progress), {
       signal: state.abort.signal,
       options: { ...state.prefs },
-      skills: skillsPayload(state.skillState)
+      skills: skillsPayload(state.skillState),
+      router: routerPayload()
     });
+
+    if (result.router && result.router.ledger) applyLedger(result.router.ledger);
 
     progress.stop();
     showResult(result);
@@ -350,6 +366,7 @@ function autoLogin() {
 
 state.prefs = loadPrefs();
 state.skillState = loadSkillState();
+initRouterStore();
 
 hydrateIcons();
 initRepoPicker();
