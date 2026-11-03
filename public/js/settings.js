@@ -2,14 +2,16 @@ import { $, h } from "./dom.js";
 import { icon } from "./icons.js";
 import { state } from "./state.js";
 import { DEFAULT_PREFS, savePrefs, saveToken, forgetToken, isTokenRemembered } from "./prefs.js";
+import { renderRouterPanel } from "./router-ui.js";
 import { renderSkills } from "./skills-ui.js";
 import { canInstall, installApp, isIOS, isStandalone, onInstallChange } from "./pwa.js";
 import { toast } from "./toast.js";
 
-// لوحة الإعدادات: عام (سلوك الوكيل) · المهارات · الحساب والتثبيت.
+// لوحة الإعدادات: عام (سلوك الوكيل) · التوجيه الذكي · المهارات · الحساب والتثبيت.
 
 const TABS = [
   ["general", "عام", "sliders"],
+  ["router", "التوجيه", "zap"],
   ["skills", "المهارات", "book"],
   ["account", "الحساب", "user"]
 ];
@@ -61,6 +63,7 @@ function infoRow(label, value) {
 
 function generalPanel() {
   const limits = state.limits || {};
+  const pinned = state.router.catalog && state.router.catalog.pinned;
 
   return h("div", { class: "panel-body" },
     toggleRow("agentic", "الاستكشاف الذكي", "يبحث في الكود ويقرأ الـ issues والـ Pull Requests قبل التنفيذ لاختيار الملفات الصحيحة."),
@@ -70,7 +73,7 @@ function generalPanel() {
     selectRow("repairRounds", "جولات الإصلاح الذاتي", "أقصى عدد لمحاولات إصلاح فشل الفحوصات.", [0, 1, 2, 3, 4], n => (n === 0 ? "بلا إصلاح" : String(n))),
     h("div", { class: "info-card" },
       h("h3", { text: "معلومات الخادم" }),
-      infoRow("النموذج", state.model || "—"),
+      infoRow("اختيار النموذج", pinned ? "مثبّت من الخادم: " + pinned.split("/").pop() : "Smart Auto (تلقائي لكل مرحلة)"),
       infoRow("حد الرسالة", (limits.maxTaskChars || 50000) + " حرف"),
       infoRow("حجم الملف الأقصى", limits.maxFileBytes ? kb(limits.maxFileBytes) : "—"),
       infoRow("إعادة الكتابة الكاملة حتى", limits.fullRewriteBytes ? kb(limits.fullRewriteBytes) + " (الأكبر يُعدَّل جزئيًا)" : "—"),
@@ -164,6 +167,19 @@ function skillsPanel() {
   return box;
 }
 
+function routerPanel() {
+  const box = h("div", { class: "panel-body", id: "routerRoot" });
+  renderRouterPanel(box);
+  return box;
+}
+
+const PANELS = {
+  general: generalPanel,
+  router: routerPanel,
+  skills: skillsPanel,
+  account: accountPanel
+};
+
 function draw() {
   const tabs = h("div", { class: "tabs", role: "tablist", "aria-label": "أقسام الإعدادات" },
     TABS.map(([key, label, iconName]) =>
@@ -179,7 +195,7 @@ function draw() {
     )
   );
 
-  const panel = activeTab === "skills" ? skillsPanel() : activeTab === "account" ? accountPanel() : generalPanel();
+  const panel = (PANELS[activeTab] || generalPanel)();
   const wrapper = h("div", { class: "panel", id: "settingsPanel", role: "tabpanel", "aria-labelledby": "tab-" + activeTab }, panel);
 
   $("settingsBody").replaceChildren(tabs, wrapper);
