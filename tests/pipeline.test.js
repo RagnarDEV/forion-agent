@@ -12,6 +12,7 @@ const edit = (content, summary = "غيّرت") =>
   ({ summary, files: [{ path: "src/app.js", content }] });
 const check = (id, conclusion, name = "Tests") =>
   ({ id, name, status: "completed", conclusion, app: { slug: "github-actions" } });
+const stagesOf = io => io.events.filter(event => event.type === "stage").map(event => event.stage);
 
 test("تدفق كامل: تعديل ملف ثم فرع وPull Request", async () => {
   const repo = makeRepo(FILES);
@@ -27,7 +28,7 @@ test("تدفق كامل: تعديل ملف ثم فرع وPull Request", async ()
     assert.equal(repo.state.treeBody.tree[0].path, "src/app.js");
     assert.equal(repo.state.treeBody.tree[0].content, "export const a = 2;\n");
     assert.equal(repo.state.prBody.base, "main");
-    assert.deepEqual(io.events.map(event => event.stage), ["scan", "select", "read", "generate", "publish"]);
+    assert.deepEqual(stagesOf(io), ["scan", "select", "read", "generate", "publish"]);
   } finally { repo.restore(); }
 });
 
