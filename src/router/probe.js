@@ -34,7 +34,13 @@ const short = error => String((error && error.message) || error).replace(/\s+/g,
 async function attempt(env, info, messages, caps, ledger, totals) {
   if (ledger) {
     const denial = ledger.denial(PROBE_ESTIMATE);
-    if (denial) throw new ModelCallError(denial, "quota", 3036);
+
+    if (denial) {
+      // رفض من ميزانيتك الداخلية (وليس نفادًا فعليًا عند Cloudflare): لا يُعلَّم الدفتر بأنه نفد.
+      const denied = new ModelCallError(denial, "quota", 0);
+      denied.budget = true;
+      throw denied;
+    }
   }
 
   const out = await callModel(env, info, { messages, maxTokens: 300, timeoutMs: PROBE_TIMEOUT_MS, label: "اختبار التوافق", caps });
@@ -81,7 +87,7 @@ async function probeOne(env, id, ledger) {
   let basicJson = false;
   try {
     const parsed = parseModelJSON(basic.text, "الاختبار الأساسي");
-    basicJson = parsed && parsed.ok === true && parsed.n === 7;
+    basicJson = Boolean(parsed && parsed.ok === true && parsed.n === 7);
     if (!basicJson) result.errors.push("JSON الأساسي لا يطابق المتوقع.");
   } catch (error) {
     result.errors.push("JSON الأساسي: " + short(error));
@@ -92,7 +98,7 @@ async function probeOne(env, id, ledger) {
   try {
     const strict = await attempt(env, info, STRICT, result.acceptsMaxTokens ? { acceptsMaxTokens: true } : null, ledger, totals);
     const parsed = parseModelJSON(strict.text, "اختبار الترميز");
-    strictJson = parsed && parsed.text === "مرحبا" && parsed.code === EXPECTED_CODE;
+    strictJson = Boolean(parsed && parsed.text === "مرحبا" && parsed.code === EXPECTED_CODE);
     if (!strictJson) result.errors.push("اختبار الترميز: القيم المفككة لا تطابق المتوقع (الاقتباس/السطر الجديد/العربية).");
   } catch (error) {
     if (error.kind === "quota") throw error;
@@ -113,7 +119,8 @@ function finish(result, totals) {
   return result;
 }
 
-// يُرجع { at, models: { [id]: نتيجة }, stoppedByQuota }.
+// يُرجع { at, models: { [id]: نتيجة }, stoppedByQuota, message? }.
+// نفاد حقيقي (3036) يُعلِّم الدفتر exhausted؛ رفض الميزانية الداخلية لا يفعل.
 export async function probeModels(env, { ledger = null, ids = CANDIDATE_IDS } = {}) {
   const report = { at: new Date().toISOString(), models: {}, stoppedByQuota: false };
 
@@ -124,6 +131,7 @@ export async function probeModels(env, { ledger = null, ids = CANDIDATE_IDS } = 
       if (error.kind === "quota") {
         report.stoppedByQuota = true;
         report.message = error.message;
+        if (ledger && !error.budget) ledger.markExhausted();
         break;
       }
 
