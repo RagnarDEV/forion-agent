@@ -20,6 +20,7 @@ export const MAX_SWITCHES_PER_TASK = 4;
 const MAX_SWITCHES_PER_CALL = 1;
 const SWITCHABLE = new Set(["capacity", "timeout", "empty", "error", "paid", "unavailable"]);
 const OUTCOME_OF_KIND = { capacity: "capacity", timeout: "timeout", empty: "format", toolarge: "error" };
+const BUDGET_REASON = /الحصة|ميزانية|التكلفة/;
 
 const round = value => Math.round(value * 10) / 10;
 
@@ -109,10 +110,11 @@ export function createRouter({ env, io = null, task, scan = null, settings, ledg
     }
   }
 
-  // لا نموذج صالح: إن كان السبب الميزانية/الحصة فهو إيقاف حصة، وإلا خطأ إعداد.
+  // لا نموذج صالح: إن كان أحد المرشحين استُبعد بسبب الميزانية/الحصة فهو إيقاف حصة،
+  // وإن كان الاستبعاد كله بسبب قدرات/إعداد فهو خطأ إعداد.
   function noModel(rows) {
     const reasons = rows.map(row => row.info.label + ": " + row.excluded).join(" | ");
-    const budgetRelated = rows.length > 0 && rows.every(row => /الحصة|ميزانية|التكلفة/.test(row.excluded || ""));
+    const budgetRelated = rows.some(row => BUDGET_REASON.test(row.excluded || ""));
 
     if (budgetRelated || ledger.exhausted) {
       return new QuotaExhaustedError("تعذر تنفيذ هذه المرحلة ضمن الحصة المجانية: " + reasons + ". " + QUOTA_MESSAGE);
