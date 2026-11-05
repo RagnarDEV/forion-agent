@@ -23,8 +23,13 @@ async function loadSources() {
   return sources;
 }
 
+const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 function exportsName(source, name) {
-  const declaration = new RegExp("export\\s+(?:async\\s+)?(?:function\\*?|const|let|class)\\s+" + name.replace(/\$/g, "\\$") + "\\b");
+  // (?![\w$]) بدل \b لأن الاسم قد يكون "$" نفسه.
+  const declaration = new RegExp(
+    "export\\s+(?:async\\s+)?(?:function\\*?|const|let|class)\\s+" + escapeRegex(name) + "(?![\\w$])"
+  );
   if (declaration.test(source)) return true;
 
   for (const match of source.matchAll(/export\s*\{([^}]*)\}/g)) {
