@@ -1,4 +1,4 @@
-import { GLM, GPT_OSS, modelInfo } from "./catalog.js";
+import { GEMMA, GLM, GPT_OSS, modelInfo } from "./catalog.js";
 import { measure, observedUsage, statKey } from "./stats.js";
 import { estimateNeurons } from "./usage.js";
 
@@ -35,6 +35,16 @@ function priorScore(modelId, stage, cls) {
     return { score: base, why: "بديل معتمد" };
   }
 
+  if (modelId === GEMMA) {
+    const base = stage === "repair" || stage === "review" ? 55 : stage === "generate" ? 52 : 50;
+
+    if (cls.deepReasoning && REASONING_STAGES.has(stage)) {
+      return { score: base + 5, why: "بديل Gemma بقدرات استدلال موثقة؛ الجودة تُقاس بالنتائج" };
+    }
+
+    return { score: base, why: "بديل Gemma معتمد بعد اختبار التوافق" };
+  }
+
   return { score: 40, why: "نموذج غير معروف" };
 }
 
@@ -47,8 +57,9 @@ export function capabilityGate(modelId, stage, profile) {
 
   if (!caps) return "لم يُختبر توافقه بعد (شغّل «اختبار التوافق» من الإعدادات)";
   if (caps.ok !== true || caps.jsonOk !== true) return "فشل اختبار التوافق أو إنتاج JSON";
-  if (OUTPUT_HEAVY.has(stage) && caps.acceptsMaxTokens !== true) {
-    return "لم يثبت قبوله max_tokens، فلا يصلح لمخرجات طويلة";
+  const outputLimitParam = caps.outputLimitParam || (caps.acceptsMaxTokens === true ? "max_tokens" : "none");
+  if (OUTPUT_HEAVY.has(stage) && !["max_tokens", "max_completion_tokens"].includes(outputLimitParam)) {
+    return "لم يثبت قبوله max_tokens أو max_completion_tokens، فلا يصلح للمخرجات الطويلة";
   }
 
   return null;

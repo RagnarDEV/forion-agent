@@ -14,6 +14,7 @@ export const DEFAULT_ROUTER_SETTINGS = Object.freeze({
 const REVIEW_MODES = ["off", "auto", "on"];
 const KEY_PATTERN = /^@cf\/[A-Za-z0-9_.\-/]{1,80}\|(explore|select|generate|repair|review)\|(question|bugfix|refactor|feature|docs|ci|edit)$/;
 const FIELDS = ["n", "ok", "fmt", "val", "to", "cap", "err", "lat", "neu", "nuse", "tokIn", "charsIn", "tokOut"];
+const OUTPUT_LIMIT_PARAMS = ["none", "max_tokens", "max_completion_tokens"];
 
 const utcDay = () => new Date().toISOString().slice(0, 10);
 const safe = value => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0);
@@ -62,6 +63,9 @@ export function loadRouterState() {
       ok: entry.ok === true,
       jsonOk: entry.jsonOk === true,
       acceptsMaxTokens: entry.acceptsMaxTokens === true,
+      outputLimitParam: OUTPUT_LIMIT_PARAMS.includes(entry.outputLimitParam)
+        ? entry.outputLimitParam
+        : (entry.acceptsMaxTokens === true ? "max_tokens" : "none"),
       latencyMs: safe(entry.latencyMs),
       neurons: safe(entry.neurons),
       errors: Array.isArray(entry.errors) ? entry.errors.filter(text => typeof text === "string").slice(0, 4) : [],
@@ -119,6 +123,9 @@ export function applyProfile(report) {
       ok: result.ok === true,
       jsonOk: result.jsonOk === true,
       acceptsMaxTokens: result.acceptsMaxTokens === true,
+      outputLimitParam: OUTPUT_LIMIT_PARAMS.includes(result.outputLimitParam)
+        ? result.outputLimitParam
+        : (result.acceptsMaxTokens === true ? "max_tokens" : "none"),
       latencyMs: safe(result.latencyMs),
       neurons: safe(result.neurons),
       errors: Array.isArray(result.errors) ? result.errors.slice(0, 4) : [],

@@ -90,6 +90,7 @@ test("waitForChecks: عند ضيق الميزانية يكتفي باستطلا�
 });
 
 const stubs = () => ({
+  encodedRepo: "o/r",
   scan: { candidateMap: new Map() },
   published: { headSha: "c2", treeSha: "t2", branch: "forion-agent-x", number: 7 },
   changed: [{ path: "src/app.js", content: "export const a = 2;\n" }],

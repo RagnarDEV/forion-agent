@@ -96,7 +96,10 @@ function modelStatus(id) {
     return profile ? (profile.ok && profile.jsonOk ? "✓ الأساسي · اجتاز الاختبار" : "الأساسي · نتيجة الاختبار: " + (profile.ok ? "JSON غير صارم" : "فشل")) : "الأساسي (معتمد)";
   }
   if (!profile) return "غير مختبَر — لن يُستخدم";
-  if (profile.ok && profile.jsonOk) return "✓ اجتاز الاختبار" + (profile.acceptsMaxTokens ? " · يقبل max_tokens" : " · بلا max_tokens (لا يصلح للمخرجات الطويلة)");
+  if (profile.ok && profile.jsonOk) {
+    const param = profile.outputLimitParam || (profile.acceptsMaxTokens ? "max_tokens" : "none");
+    return "✓ اجتاز الاختبار" + (param === "none" ? " · بلا معامل إخراج (لا يصلح للمخرجات الطويلة)" : " · يقبل " + param);
+  }
   return "✗ " + (profile.ok ? "JSON غير صارم" : "فشل الاستدعاء");
 }
 
@@ -140,6 +143,13 @@ function modelsCard() {
       h("p", { class: "field-hint", text: "السعر الرسمي: " + model.rates.inputPerM + " Neuron لكل مليون توكن مدخل، و" + model.rates.outputPerM + " للمخرج." })
     ];
 
+    if (model.contextTokens) {
+      const capabilities = model.capabilities
+        ? [model.capabilities.functionCalling && "Function Calling", model.capabilities.reasoning && "Reasoning", model.capabilities.vision && "Vision"].filter(Boolean).join(" · ")
+        : "";
+      lines.push(h("p", { class: "field-hint", text: "السياق: " + model.contextTokens.toLocaleString("en-US") + " توكن" + (capabilities ? " · " + capabilities : "") }));
+    }
+
     if (profile && profile.at) {
       lines.push(h("p", { class: "field-hint", text: "آخر اختبار: زمن ≈" + Math.round(profile.latencyMs) + "ms · استهلاك ≈" + Math.round(profile.neurons) + " Neuron" }));
     }
@@ -153,7 +163,7 @@ function modelsCard() {
   return h("div", { class: "info-card" },
     h("h3", { text: "النماذج واختبار التوافق" }),
     rows,
-    h("p", { class: "field-hint", text: "GPT-OSS-20B لا يدخل في التوجيه إلا بعد أن يجتاز اختبارًا حقيقيًا على Worker الخاص بك (قبول الاستدعاء، max_tokens، وJSON صارم بالاقتباس والسطر الجديد والعربية). تكلفة الاختبار صغيرة وتُحتسب من حصتك." }),
+    h("p", { class: "field-hint", text: "لا يدخل أي نموذج بديل في Smart Auto إلا بعد اختبار حقيقي على Worker الخاص بك: قبول الاستدعاء، معامل تحديد المخرجات الموثق عند الحاجة، وJSON صارم بالاقتباس والسطر الجديد والعربية. تكلفة الاختبار صغيرة وتُحتسب من حصتك المشتركة." }),
     h("button", {
       type: "button",
       class: "btn btn-primary small",

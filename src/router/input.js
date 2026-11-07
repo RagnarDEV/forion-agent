@@ -6,6 +6,7 @@ import { sanitizeStats } from "./stats.js";
 // كلها أعداد وأعلام فقط؛ أي شيء آخر يُهمل.
 
 const REVIEW_MODES = ["off", "auto", "on"];
+const OUTPUT_LIMIT_PARAMS = ["none", "max_tokens", "max_completion_tokens"];
 
 const obj = value => (value && typeof value === "object" && !Array.isArray(value) ? value : {});
 const flag = (value, fallback) => (typeof value === "boolean" ? value : fallback);
@@ -39,6 +40,9 @@ export function sanitizeProfile(raw) {
       ok: entry.ok === true,
       jsonOk: entry.jsonOk === true,
       acceptsMaxTokens: entry.acceptsMaxTokens === true,
+      outputLimitParam: OUTPUT_LIMIT_PARAMS.includes(entry.outputLimitParam)
+        ? entry.outputLimitParam
+        : (entry.acceptsMaxTokens === true ? "max_tokens" : "none"),
       latencyMs: bounded(entry.latencyMs, 0, 600000, 0),
       at: typeof entry.at === "string" ? entry.at.slice(0, 30) : ""
     };

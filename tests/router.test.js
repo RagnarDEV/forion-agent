@@ -7,10 +7,10 @@ import { buildRouterContext } from "../src/router/input.js";
 import { MAX_CALLS_PER_TASK, createRouter } from "../src/router/router.js";
 import { baseEnv, makeIO, makeRepo } from "./helpers.js";
 import {
-  CAPACITY_ERROR, GLM, GPT_OSS, PROFILE_OK, QUOTA_ERROR, eventsOf, modelAI, reply, responsesReply
+  CAPACITY_ERROR, GEMMA, GLM, GPT_OSS, PROFILE_OK, QUOTA_ERROR, eventsOf, modelAI, reply, responsesReply
 } from "./router-helpers.js";
 
-// هذه اختبارات منطق بربط AI وهمي (محاكاة). اختبار GPT-OSS الحي الحقيقي يتم من الإعدادات ← التوجيه.
+// هذه اختبارات منطق بربط AI وهمي (محاكاة). الاختبار الحي للنماذج البديلة يتم من الإعدادات ← التوجيه.
 
 const MESSAGES = [{ role: "system", content: "S" }, { role: "user", content: "hello world" }];
 const MEDIUM_TASK = "add feature to src/a.js src/b.js src/c.js";
@@ -27,6 +27,19 @@ function setup({ handler, env = {}, router = {}, task = "fix the bug in src/a.js
 
 const call = (router, stage = "generate", extra = {}) =>
   router.ai.call({ stage, messages: MESSAGES, maxTokens: 1000, timeoutMs: 5000, label: "اختبار", ...extra });
+
+test("Gemma يدخل Smart Auto فقط بعد نجاح JSON ومعامل الإخراج", async () => {
+  const { ai, router } = setup({
+    handler: ({ model }) => model === GLM ? (() => { throw new Error(CAPACITY_ERROR); })() : reply("{}"),
+    router: { profile: { models: { [GEMMA]: { ok: true, jsonOk: true, outputLimitParam: "max_completion_tokens" } } } }
+  });
+
+  const answer = await call(router, "explore");
+  assert.equal(answer.model, GEMMA);
+  assert.deepEqual(ai.models(), [GLM, GEMMA]);
+  assert.equal(ai.calls[1].request.max_completion_tokens, 1000);
+  assert.equal("max_tokens" in ai.calls[1].request, false);
+});
 
 // ───────── الاختيار والمحاسبة ─────────
 

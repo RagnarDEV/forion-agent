@@ -5,7 +5,8 @@ import { DEFAULT_MODEL } from "../config.js";
 
 export const GLM = "@cf/zai-org/glm-4.7-flash";
 export const GPT_OSS = "@cf/openai/gpt-oss-20b";
-export const CANDIDATE_IDS = Object.freeze([GLM, GPT_OSS]);
+export const GEMMA = "@cf/google/gemma-4-26b-a4b-it";
+export const CANDIDATE_IDS = Object.freeze([GLM, GPT_OSS, GEMMA]);
 
 export const MODEL_CATALOG = Object.freeze({
   [GLM]: Object.freeze({
@@ -14,6 +15,7 @@ export const MODEL_CATALOG = Object.freeze({
     short: "GLM",
     rates: Object.freeze({ inputPerM: 5500, outputPerM: 36400 }),
     contextTokens: 131072,
+    probeOutputParams: Object.freeze(["max_tokens"]),
     // معاملات GLM التي يعتمد عليها الخط الحالي (تعطيل التفكير وجهد منخفض).
     buildInput: ({ messages, maxTokens }) => ({
       messages,
@@ -29,10 +31,31 @@ export const MODEL_CATALOG = Object.freeze({
     short: "GPT-OSS",
     rates: Object.freeze({ inputPerM: 18182, outputPerM: 27273 }),
     contextTokens: 128000,
+    probeOutputParams: Object.freeze(["max_tokens"]),
     // الوثائق تؤكد قبول messages فقط. max_tokens لا يُرسل إلا بعد أن يثبت اختبار التوافق قبوله.
     // ولا نرسل reasoning أو chat_template_kwargs أو response_format.
     buildInput: ({ messages, maxTokens, caps }) =>
       caps && caps.acceptsMaxTokens === true ? { messages, max_tokens: maxTokens } : { messages }
+  }),
+
+  [GEMMA]: Object.freeze({
+    id: GEMMA,
+    label: "Gemma 4 26B A4B IT",
+    short: "Gemma 4",
+    rates: Object.freeze({ inputPerM: 9091, outputPerM: 27273 }),
+    contextTokens: 256000,
+    probeOutputParams: Object.freeze(["max_completion_tokens", "max_tokens"]),
+    capabilities: Object.freeze({ functionCalling: true, reasoning: true, vision: true }),
+    // لا يُرسل حد المخرجات قبل أن يثبت اختبار التوافق المعامل الذي يقبله Workers AI.
+    buildInput: ({ messages, maxTokens, caps }) => {
+      if (caps && caps.outputLimitParam === "max_completion_tokens") {
+        return { messages, max_completion_tokens: maxTokens };
+      }
+      if (caps && caps.outputLimitParam === "max_tokens") {
+        return { messages, max_tokens: maxTokens };
+      }
+      return { messages };
+    }
   })
 });
 
@@ -73,7 +96,14 @@ export function publicCatalog(env) {
     pinned: pinnedModel(env),
     models: CANDIDATE_IDS.map(id => {
       const info = MODEL_CATALOG[id];
-      return { id, label: info.label, short: info.short, rates: info.rates, contextTokens: info.contextTokens };
+      return {
+        id,
+        label: info.label,
+        short: info.short,
+        rates: info.rates,
+        contextTokens: info.contextTokens,
+        capabilities: info.capabilities || null
+      };
     })
   };
 }

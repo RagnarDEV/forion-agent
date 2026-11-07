@@ -5,13 +5,15 @@ import { ModelCallError } from "./errors.js";
 import { neuronsFor } from "./usage.js";
 
 // اختبار التوافق الحقيقي: يستدعي كل نموذج فعليًا عبر ربط AI في Worker الخاص بك (وليس نموذجًا وهميًا)،
-// ويقيس: هل يقبل الاستدعاء؟ هل يقبل max_tokens؟ هل يُنتج JSON صحيحًا بما فيه الاقتباس والسطر الجديد والعربية؟
+// ويقيس: هل يقبل الاستدعاء؟ وما معامل تحديد المخرجات الذي يقبله؟ وهل يُنتج JSON صحيحًا بما فيه الاقتباس والسطر الجديد والعربية؟
 // تكلفته صغيرة (استدعاءان قصيران لكل نموذج) وتُحتسب من حصتك المجانية في الدفتر.
-// نتيجته (ملف القدرات) تحدد أي النماذج يدخل في التوجيه: GPT-OSS لا يُستخدم قبل نجاح هذا الاختبار.
+// نتيجته (ملف القدرات) تحدد أي النماذج البديلة تدخل في التوجيه قبل استخدامها.
 
 const PROBE_TIMEOUT_MS = 60000;
 const PROBE_ESTIMATE = 60;     // حد أعلى تقريبي لتكلفة استدعاء الاختبار القصير (Neuron)
 const EXPECTED_CODE = "const a = \"x\";\nreturn a;";
+
+const outputParams = info => info.probeOutputParams || ["max_tokens"];
 
 const BASIC = [
   { role: "system", content: "Return only a JSON object. No Markdown, no commentary." },
@@ -37,7 +39,7 @@ async function attempt(env, info, messages, caps, ledger, totals) {
 
     if (denial) {
       // رفض من ميزانيتك الداخلية (وليس نفادًا فعليًا عند Cloudflare): لا يُعلَّم الدفتر بأنه نفد.
-      const denied = new ModelCallError(denial, "quota", 0);
+      const denied = new ModelCallError("تعذر اختبار التوافق ضمن الميزانية الداخلية: " + denial, "quota", 0);
       denied.budget = true;
       throw denied;
     }
@@ -58,25 +60,29 @@ async function probeOne(env, id, ledger) {
   const info = modelInfo(id);
   const at = new Date().toISOString();
   const totals = { latency: [], neurons: 0, usageKnown: true };
-  const result = { ok: false, jsonOk: false, acceptsMaxTokens: false, latencyMs: 0, neurons: 0, usageKnown: true, errors: [], at };
+  const result = { ok: false, jsonOk: false, acceptsMaxTokens: false, outputLimitParam: "none", latencyMs: 0, neurons: 0, usageKnown: true, errors: [], at };
 
-  // 1) استدعاء أساسي مع max_tokens.
+  // 1) استدعاء أساسي بمعاملات تحديد المخرجات بالترتيب الموثق للنموذج.
   let basic = null;
-  try {
-    basic = await attempt(env, info, BASIC, { acceptsMaxTokens: true }, ledger, totals);
-    result.acceptsMaxTokens = true;
-  } catch (error) {
-    if (error.kind === "quota") throw error;
-    result.errors.push("مع max_tokens: " + short(error));
+  for (const param of outputParams(info)) {
+    try {
+      basic = await attempt(env, info, BASIC, { outputLimitParam: param, acceptsMaxTokens: param === "max_tokens" }, ledger, totals);
+      result.outputLimitParam = param;
+      result.acceptsMaxTokens = param === "max_tokens";
+      break;
+    } catch (error) {
+      if (error.kind === "quota") throw error;
+      result.errors.push("مع " + param + ": " + short(error));
+    }
   }
 
-  // 2) إن رفض النموذج max_tokens نجرّب بدونه (لا نمرّر ما لا يدعمه).
+  // 2) إن رُفضت المعاملات الموثقة نجرّب الرسائل بدونه.
   if (!basic) {
     try {
       basic = await attempt(env, info, BASIC, null, ledger, totals);
     } catch (error) {
       if (error.kind === "quota") throw error;
-      result.errors.push("بدون max_tokens: " + short(error));
+    result.errors.push("بدون معامل تحديد المخرجات: " + short(error));
     }
   }
 
@@ -96,7 +102,9 @@ async function probeOne(env, id, ledger) {
   // 3) JSON صارم: اقتباس وسطر جديد وعربية.
   let strictJson = false;
   try {
-    const strict = await attempt(env, info, STRICT, result.acceptsMaxTokens ? { acceptsMaxTokens: true } : null, ledger, totals);
+    const strict = await attempt(env, info, STRICT, result.outputLimitParam === "none"
+      ? null
+      : { outputLimitParam: result.outputLimitParam, acceptsMaxTokens: result.acceptsMaxTokens }, ledger, totals);
     const parsed = parseModelJSON(strict.text, "اختبار الترميز");
     strictJson = Boolean(parsed && parsed.text === "مرحبا" && parsed.code === EXPECTED_CODE);
     if (!strictJson) result.errors.push("اختبار الترميز: القيم المفككة لا تطابق المتوقع (الاقتباس/السطر الجديد/العربية).");

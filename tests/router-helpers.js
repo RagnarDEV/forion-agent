@@ -1,9 +1,9 @@
 // أدوات اختبار الموجّه: ربط AI وهمي يعرف اسم النموذج المستدعى (المحاكاة فقط، وليست اختبارًا حيًا).
 // الاختبار الحي الحقيقي يُنفَّذ من الإعدادات ← التوجيه ← «اختبار التوافق الحقيقي» على Worker المنشور.
 
-import { GLM, GPT_OSS } from "../src/router/catalog.js";
+import { GEMMA, GLM, GPT_OSS } from "../src/router/catalog.js";
 
-export { GLM, GPT_OSS };
+export { GEMMA, GLM, GPT_OSS };
 
 export function modelAI(handler) {
   const calls = [];
@@ -40,9 +40,16 @@ export const responsesReply = (value, usage) => ({
   ...(usage ? { usage } : {})
 });
 
-// ملف قدرات ناجح لـ GPT-OSS (يمثل نتيجة «اختبار التوافق» الناجحة).
+// ملفات قدرات ناجحة للنماذج البديلة (تمثل نتيجة «اختبار التوافق» الناجحة).
 export const PROFILE_OK = {
   models: { [GPT_OSS]: { ok: true, jsonOk: true, acceptsMaxTokens: true, latencyMs: 900, at: "2026-11-03T00:00:00Z" } }
+};
+
+export const PROFILE_GEMMA_OK = {
+  models: {
+    [GPT_OSS]: { ok: true, jsonOk: true, acceptsMaxTokens: true, outputLimitParam: "max_tokens", latencyMs: 900, at: "2026-11-03T00:00:00Z" },
+    [GEMMA]: { ok: true, jsonOk: true, outputLimitParam: "max_completion_tokens", latencyMs: 850, at: "2026-11-03T00:00:00Z" }
+  }
 };
 
 export const CAPACITY_ERROR = "3040: Capacity temporarily exceeded, please try again.";

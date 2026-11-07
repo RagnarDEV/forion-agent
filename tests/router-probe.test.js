@@ -6,9 +6,9 @@ import { sanitizeProfile } from "../src/router/input.js";
 import { NeuronLedger } from "../src/router/ledger.js";
 import { probeModels } from "../src/router/probe.js";
 import { baseEnv } from "./helpers.js";
-import { GLM, GPT_OSS, QUOTA_ERROR, modelAI, reply } from "./router-helpers.js";
+import { GEMMA, GLM, GPT_OSS, QUOTA_ERROR, modelAI, reply } from "./router-helpers.js";
 
-// اختبارات منطق اختبار التوافق بربط AI وهمي (محاكاة). التنفيذ الحي الحقيقي على GPT-OSS يتم من
+// اختبارات منطق اختبار التوافق بربط AI وهمي (محاكاة). التنفيذ الحي الحقيقي على النماذج البديلة يتم من
 // الإعدادات ← التوجيه ← «اختبار التوافق الحقيقي» على Worker المنشور، ولا يمكن تنفيذه من بيئة الاختبار.
 
 const GOOD_STRICT = JSON.stringify({ text: "مرحبا", code: "const a = \"x\";\nreturn a;" });
@@ -25,7 +25,7 @@ test("الاختبار: GLM ينجح، وGPT-OSS يرفض max_tokens فيُخت�
   const ledger = new NeuronLedger({});
   const report = await probeModels({ AI: ai }, { ledger });
 
-  assert.deepEqual(ai.models(), [GLM, GLM, GPT_OSS, GPT_OSS, GPT_OSS]);
+  assert.deepEqual(ai.models(), [GLM, GLM, GPT_OSS, GPT_OSS, GPT_OSS, GEMMA, GEMMA]);
 
   const glm = report.models[GLM];
   assert.equal(glm.ok, true);
@@ -48,13 +48,42 @@ test("الاختبار: GLM ينجح، وGPT-OSS يرفض max_tokens فيُخت�
     assert.equal("reasoning_effort" in ai.calls[index].request, false);
   }
 
-  // الاختبار يُحاسَب من الحصة: GLM ≈2.0 + GPT-OSS ≈2.9.
-  assert.ok(ledger.neurons > 4.5 && ledger.neurons < 5.5, "ledger=" + ledger.neurons);
+  // الاختبار يُحاسَب من الحصة: GLM ≈2.0 + GPT-OSS ≈2.9 + Gemma ≈2.0.
+  assert.ok(ledger.neurons > 6.5 && ledger.neurons < 7.5, "ledger=" + ledger.neurons);
 
   // النتيجة تُترجم إلى بوابات قدرة: لا يصلح للمخرجات الطويلة (generate) لكنه يصلح للاستكشاف.
   const profile = sanitizeProfile(report);
   assert.match(capabilityGate(GPT_OSS, "generate", profile), /max_tokens/);
   assert.equal(capabilityGate(GPT_OSS, "explore", profile), null);
+
+  const gemma = report.models[GEMMA];
+  assert.equal(gemma.ok, true);
+  assert.equal(gemma.jsonOk, true);
+  assert.equal(gemma.outputLimitParam, "max_completion_tokens");
+  assert.equal(gemma.acceptsMaxTokens, false);
+  assert.equal(ai.calls[5].request.max_completion_tokens, 300);
+  assert.equal("max_tokens" in ai.calls[5].request, false);
+  assert.equal(ai.calls[6].request.max_completion_tokens, 300);
+});
+
+test("Gemma ينتقل إلى max_tokens ثم بدونه إذا رفض المعاملات بالترتيب", async () => {
+  const ai = modelAI(({ model, request }) => {
+    if (model === GEMMA && request.max_completion_tokens !== undefined) throw new Error("unsupported max_completion_tokens");
+    if (model === GEMMA && request.max_tokens !== undefined) throw new Error("unsupported max_tokens");
+    return good(request);
+  });
+  const report = await probeModels({ AI: ai }, { ids: [GEMMA] });
+  const gemma = report.models[GEMMA];
+
+  assert.equal(gemma.ok, true);
+  assert.equal(gemma.jsonOk, true);
+  assert.equal(gemma.outputLimitParam, "none");
+  assert.equal(gemma.acceptsMaxTokens, false);
+  assert.deepEqual(ai.models(), [GEMMA, GEMMA, GEMMA, GEMMA]);
+  assert.equal("max_completion_tokens" in ai.calls[0].request, true);
+  assert.equal("max_tokens" in ai.calls[1].request, true);
+  assert.equal("max_completion_tokens" in ai.calls[2].request, false);
+  assert.equal("max_tokens" in ai.calls[2].request, false);
 });
 
 test("JSON غير صالح: يُسجَّل jsonOk=false ويُستبعد النموذج من التوجيه", async () => {
@@ -119,7 +148,7 @@ test("POST /api/router/probe: يتطلب مصادقة ويُرجع التقري�
   const data = await response.json();
 
   assert.equal(response.status, 200);
-  assert.deepEqual(Object.keys(data.report.models).sort(), [GLM, GPT_OSS].sort());
+  assert.deepEqual(Object.keys(data.report.models).sort(), [GLM, GPT_OSS, GEMMA].sort());
   assert.equal(data.report.models[GLM].jsonOk, true);
   assert.ok(data.ledger.neurons > 0);
   assert.equal(data.ledger.exhausted, false);
@@ -150,8 +179,9 @@ test("GET /api/repos: يعرض كتالوج التوجيه (أسعار رسمي�
     assert.equal(plain.router.pinned, "");
     assert.equal(plain.router.baseline, GLM);
     assert.equal(plain.router.dailyFreeNeurons, 10000);
-    assert.deepEqual(plain.router.models.map(model => model.id), [GLM, GPT_OSS]);
+    assert.deepEqual(plain.router.models.map(model => model.id), [GLM, GPT_OSS, GEMMA]);
     assert.deepEqual(plain.router.models.find(model => model.id === GPT_OSS).rates, { inputPerM: 18182, outputPerM: 27273 });
+    assert.deepEqual(plain.router.models.find(model => model.id === GEMMA).rates, { inputPerM: 9091, outputPerM: 27273 });
 
     const pinned = await (await call("/api/repos", { env: baseEnv(modelAI(() => reply("{}")), { PIN_MODEL: GPT_OSS }) })).json();
     assert.equal(pinned.router.pinned, GPT_OSS);

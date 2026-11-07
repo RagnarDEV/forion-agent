@@ -9,7 +9,7 @@ import { NeuronLedger } from "../src/router/ledger.js";
 import { rankModels } from "../src/router/policy.js";
 import { emptyStats, observedUsage, recordOutcome, sanitizeStats, statKey, wilsonLowerBound } from "../src/router/stats.js";
 import { extractUsage, neuronsFor, upperBoundNeurons } from "../src/router/usage.js";
-import { GLM, GPT_OSS, PROFILE_OK } from "./router-helpers.js";
+import { GEMMA, GLM, GPT_OSS, PROFILE_OK } from "./router-helpers.js";
 
 const near = (actual, expected, epsilon = 1e-6) =>
   assert.ok(Math.abs(actual - expected) < epsilon, actual + " ≠ " + expected);
@@ -39,6 +39,19 @@ test("GPT-OSS أغلى بنحو 3 أضعاف على المدخلات وأرخص 
 
   assert.ok(neuronsFor(MODEL_CATALOG[GPT_OSS], input) / neuronsFor(MODEL_CATALOG[GLM], input) > 3);
   assert.ok(neuronsFor(MODEL_CATALOG[GPT_OSS], output) < neuronsFor(MODEL_CATALOG[GLM], output));
+});
+
+test("Gemma 4 موجود ببيانات Cloudflare الرسمية وحساب Neurons مستقل", () => {
+  assert.equal(GEMMA, "@cf/google/gemma-4-26b-a4b-it");
+  assert.equal(MODEL_CATALOG[GEMMA].label, "Gemma 4 26B A4B IT");
+  assert.equal(MODEL_CATALOG[GEMMA].short, "Gemma 4");
+  assert.equal(MODEL_CATALOG[GEMMA].contextTokens, 256000);
+  assert.deepEqual(MODEL_CATALOG[GEMMA].rates, { inputPerM: 9091, outputPerM: 27273 });
+  assert.equal(neuronsFor(MODEL_CATALOG[GEMMA], { known: true, inputTokens: 1e6, outputTokens: 0 }), 9091);
+  assert.equal(neuronsFor(MODEL_CATALOG[GEMMA], { known: true, inputTokens: 0, outputTokens: 1e6 }), 27273);
+  assert.deepEqual(MODEL_CATALOG[GEMMA].buildInput({ messages: [{ role: "user", content: "x" }], maxTokens: 5 }), { messages: [{ role: "user", content: "x" }] });
+  assert.deepEqual(MODEL_CATALOG[GEMMA].buildInput({ messages: [], maxTokens: 5, caps: { outputLimitParam: "max_completion_tokens" } }), { messages: [], max_completion_tokens: 5 });
+  assert.deepEqual(MODEL_CATALOG[GEMMA].buildInput({ messages: [], maxTokens: 5, caps: { outputLimitParam: "max_tokens" } }), { messages: [], max_tokens: 5 });
 });
 
 test("upperBoundNeurons: حد أعلى رياضي من البايتات ولا يتجاوز max_tokens", () => {
@@ -272,6 +285,18 @@ test("GPT-OSS لا يصلح للمخرجات الطويلة قبل أن يثبت
   assert.equal(rank({ profile, stage: "explore" }).find(row => row.id === GPT_OSS).excluded, null);
 });
 
+test("Gemma غير المختبر مستبعد، والمختبر بمعامل max_completion_tokens صالح للمخرجات الطويلة", () => {
+  const candidates = [GLM, GEMMA];
+  const base = { candidates, profile: { models: {} } };
+  const before = rank(base).find(row => row.id === GEMMA);
+  assert.match(before.excluded, /لم يُختبر/);
+
+  const profile = { models: { [GEMMA]: { ok: true, jsonOk: true, outputLimitParam: "max_completion_tokens" } } };
+  const after = rank({ ...base, profile });
+  assert.equal(after.find(row => row.id === GEMMA).excluded, null);
+  assert.equal(after.find(row => row.id === GEMMA).info.id, GEMMA);
+});
+
 test("المهمة البسيطة: GLM، والمعقدة في الإصلاح: GPT-OSS (مراحل مختلفة بنماذج مختلفة)", () => {
   assert.equal(rank({ profile: PROFILE_OK })[0].id, GLM);
   assert.equal(rank({ profile: PROFILE_OK, stage: "repair", cls: cls({ complexity: "high", deepReasoning: true }) })[0].id, GPT_OSS);
@@ -331,12 +356,17 @@ test("normalizeRouterSettings وsanitizeProfile وbuildRouterContext", () => {
   const profile = sanitizeProfile({
     models: {
       [GPT_OSS]: { ok: true, jsonOk: "yes", acceptsMaxTokens: true, latencyMs: 5, secret: "x" },
+      [GEMMA]: { ok: true, jsonOk: true, outputLimitParam: "max_completion_tokens", latencyMs: 6 },
       "@cf/evil/model": { ok: true }
     }
   });
-  assert.deepEqual(Object.keys(profile.models), [GPT_OSS]);
+  assert.deepEqual(Object.keys(profile.models), [GPT_OSS, GEMMA]);
   assert.equal(profile.models[GPT_OSS].jsonOk, false);
   assert.equal(profile.models[GPT_OSS].secret, undefined);
+  assert.equal(profile.models[GEMMA].outputLimitParam, "max_completion_tokens");
+
+  const invalid = sanitizeProfile({ models: { [GEMMA]: { outputLimitParam: "chat_template_kwargs" } } });
+  assert.equal(invalid.models[GEMMA].outputLimitParam, "none");
 
   const context = buildRouterContext({ ledger: { day: "2020-01-01", neurons: 9999, exhausted: true } }, NOW);
   assert.equal(context.ledger.neurons, 0);
