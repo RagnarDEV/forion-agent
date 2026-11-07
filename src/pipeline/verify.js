@@ -150,6 +150,7 @@ const linksOf = failed => (failed || [])
 
 // ينتظر الفحوصات بعد إنشاء الفرع؛ عند الفشل يقرأ السجلات ويولّد إصلاحًا ويضيفه كـ commit جديد،
 // ثم يعيد الفحص، حتى options.repairRounds جولات. لا يدمج شيئًا ولا يتجاوز مراجعتك.
+// ai: واجهة النموذج (الموجّه الذكي)؛ مرحلة الإصلاح تُوجَّه بمعاييرها (repair) لا مرحلة التوليد.
 export async function verifyAndRepair(env, {
   encodedRepo,
   scan,
@@ -161,7 +162,8 @@ export async function verifyAndRepair(env, {
   options,
   io,
   deadline = 0,
-  timing = {}
+  timing = {},
+  ai
 }) {
   const files = new Map(changed.map(file => [file.path, file.content]));
   const existing = new Set(existingPaths);
@@ -211,7 +213,9 @@ export async function verifyAndRepair(env, {
         allowCreate: true,
         allowRenames: false,
         io,
-        deadline
+        deadline,
+        ai,
+        stage: "repair"
       });
 
       if (!outcome.changed.length && !outcome.deleted.length) {

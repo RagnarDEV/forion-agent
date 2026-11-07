@@ -1,6 +1,6 @@
 import { LIMITS, RETRY, TIMEOUTS } from "../config.js";
 import { errorMessage } from "../lib/errors.js";
-import { askAI, parseModelJSON } from "../lib/ai.js";
+import { legacyAI, parseModelJSON } from "../lib/ai.js";
 import { chatMessages } from "../lib/history.js";
 import { requestsComment } from "../lib/intent.js";
 import { TOOL_SPECS, runTool } from "../tools/github-tools.js";
@@ -28,7 +28,8 @@ function buildIntro({ repo, task, scan, skillsContext, tools }) {
 // حلقة استكشاف متعددة الخطوات: يستدعي النموذج الأدوات (JSON) ثم يُنهي بقائمة ملفات وملاحظات.
 // تُرجع { paths, notes, comments }. أي خطأ في النموذج يُرمى ليتجاوزه الخط (الاستكشاف اختياري).
 // تتوقف مبكرًا إن اقتربت ميزانية الاستدعاءات من القدر المحجوز لمراحل الاختيار والقراءة والتوليد والنشر.
-export async function explore(env, { repo, encodedRepo, task, history = [], scan, skillsContext = "", io }) {
+// ai: واجهة النموذج (الموجّه الذكي)؛ الافتراضي نموذج الخادم الأساسي بلا توجيه.
+export async function explore(env, { repo, encodedRepo, task, history = [], scan, skillsContext = "", io, ai = legacyAI(env) }) {
   const allowComment = requestsComment(task);
   const tools = TOOL_SPECS.filter(tool => allowComment || !tool.write);
   const toolNames = tools.map(tool => tool.name);
@@ -61,16 +62,26 @@ export async function explore(env, { repo, encodedRepo, task, history = [], scan
       break;
     }
 
-    const raw = await askAI(env, messages, 2500, TIMEOUTS.exploreStepMs, "الاستكشاف");
+    const answer = await ai.call({
+      stage: "explore",
+      messages,
+      maxTokens: 2500,
+      timeoutMs: TIMEOUTS.exploreStepMs,
+      label: "الاستكشاف"
+    });
+    const raw = answer.text;
     messages.push({ role: "assistant", content: raw });
 
     let action;
     try {
       action = parseModelJSON(raw, "الاستكشاف");
     } catch {
+      ai.reject({ stage: "explore", model: answer.model, kind: "format" });
       messages.push({ role: "user", content: "Invalid JSON. Reply with one JSON object only." });
       continue;
     }
+
+    ai.accept({ stage: "explore", model: answer.model });
 
     if (action && action.done === true) return finish(action);
 

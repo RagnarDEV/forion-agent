@@ -1,6 +1,6 @@
 import { LIMITS, RETRY, TIMEOUTS } from "../config.js";
 import { UserError } from "../lib/errors.js";
-import { askAI, parseModelJSON } from "../lib/ai.js";
+import { legacyAI, parseModelJSON } from "../lib/ai.js";
 import { chatMessages } from "../lib/history.js";
 import { isSafeTextPath } from "../lib/paths.js";
 import { applyEdits } from "./patch.js";
@@ -182,8 +182,13 @@ function collectChanges(output, { originals, knownPaths, allowCreate, allowRenam
   return { changed, deleted, renamed };
 }
 
+// أخطاء لا تُعاد محاولتها: نفاد الحصة أو الميزانية. أي إعادة محاولة بعدها إهدار أو مخالفة للحصة المجانية.
+const isTerminal = error => error && error.kind === "quota";
+
 // يولّد التعديلات مع محاولات متعددة: كل رفض (JSON تالف، edit لا يطابق، ملف مقتطع، مسار غير آمن...)
 // يُعاد إلى النموذج كتغذية راجعة ليصحح نفسه، حتى نفاد المحاولات أو الوقت الكلي.
+// ai: واجهة النموذج (الموجّه الذكي يقرر النموذج لكل محاولة ويُبلَّغ بنتيجة التحقق)؛ stage: generate | repair.
+// السياق والرسائل ثابتة بين المحاولات: تبديل النموذج لا يكرر أي عملية GitHub (لا تحدث هنا أصلًا).
 export async function generateChanges(env, {
   task,
   history = [],
@@ -195,7 +200,9 @@ export async function generateChanges(env, {
   allowCreate = true,
   allowRenames = true,
   io = null,
-  deadline = 0
+  deadline = 0,
+  ai = legacyAI(env),
+  stage = "generate"
 }) {
   if (typeof task !== "string" || !task.trim()) {
     throw new UserError("الطلب المطلوب تنفيذه فارغ أو غير صالح.");
@@ -242,17 +249,17 @@ export async function generateChanges(env, {
       maxChars: Math.max(0, Math.min(LIMITS.maxHistoryTotalChars, LIMITS.maxPromptChars - prompt.length))
     });
 
-    let raw;
+    let answer;
     try {
-      raw = await askAI(
-        env,
+      answer = await ai.call({
+        stage,
         messages,
-        LIMITS.maxOutputTokens,
-        TIMEOUTS.generateMs,
-        attempt === 1 ? "التحليل والتوليد" : "إعادة محاولة التوليد"
-      );
+        maxTokens: LIMITS.maxOutputTokens,
+        timeoutMs: TIMEOUTS.generateMs,
+        label: attempt === 1 ? "التحليل والتوليد" : "إعادة محاولة التوليد"
+      });
     } catch (error) {
-      if (!(error instanceof UserError)) throw error;
+      if (!(error instanceof UserError) || isTerminal(error)) throw error;
 
       lastError = error.message;
       if (attempt >= attempts) throw error;
@@ -262,15 +269,30 @@ export async function generateChanges(env, {
       continue;
     }
 
+    let output;
     try {
-      const output = validateOutput(parseModelJSON(raw, "التوليد"));
-      const result = collectChanges(output, { originals, knownPaths, allowCreate, allowRenames });
-
-      return { summary: output.summary, ...result, attempts: attempt };
+      output = validateOutput(parseModelJSON(answer.text, "التوليد"));
     } catch (error) {
       if (!(error instanceof UserError)) throw error;
 
       lastError = error.message;
+      ai.reject({ stage, model: answer.model, kind: "format" });
+      if (attempt < attempts) {
+        note("رُفضت النتيجة (المحاولة " + attempt + " من " + attempts + ") وسأصحّحها: " + lastError.slice(0, 160));
+      }
+      continue;
+    }
+
+    try {
+      const result = collectChanges(output, { originals, knownPaths, allowCreate, allowRenames });
+
+      ai.accept({ stage, model: answer.model });
+      return { summary: output.summary, ...result, attempts: attempt, model: answer.model };
+    } catch (error) {
+      if (!(error instanceof UserError)) throw error;
+
+      lastError = error.message;
+      ai.reject({ stage, model: answer.model, kind: "validation" });
       if (attempt < attempts) {
         note("رُفضت النتيجة (المحاولة " + attempt + " من " + attempts + ") وسأصحّحها: " + lastError.slice(0, 160));
       }
