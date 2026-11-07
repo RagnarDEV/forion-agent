@@ -17,7 +17,7 @@
 <link rel="apple-touch-icon" href="/icons/icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+Arabic:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="/css/tokens.css">
 <link rel="stylesheet" href="/css/base.css">
 <link rel="stylesheet" href="/css/components.css">
@@ -50,12 +50,13 @@
     <div class="sidebar-label">مساحة العمل</div>
     <nav class="tool-nav" aria-label="التنقل الرئيسي">
       <button class="tool-link active" id="sidebarChat" type="button"><span class="tool-icon" data-icon="code"></span><span>المحادثة</span><kbd>⌘ 1</kbd></button>
-      <button class="tool-link" id="sidebarRepo" type="button"><span class="tool-icon" data-icon="folder"></span><span>المستودعات</span><kbd>⌘ 2</kbd></button>
+      <button class="tool-link" id="sidebarRepo" type="button"><span class="tool-icon" data-icon="folder"></span><span class="tool-copy"><span>المستودعات</span><small id="sidebarRepoName">لم يتم الاختيار</small></span><kbd>⌘ 2</kbd></button>
       <button class="tool-link" id="sidebarSkills" type="button"><span class="tool-icon" data-icon="zap"></span><span>المهارات</span><kbd>⌘ 3</kbd></button>
     </nav>
     <div class="sidebar-label sidebar-label-spaced">الأدوات</div>
     <nav class="tool-nav" aria-label="أدوات التطبيق">
       <button class="tool-link" id="sidebarNewChat" type="button"><span class="tool-icon" data-icon="plus"></span><span>محادثة جديدة</span></button>
+      <button class="tool-link" id="sidebarRefresh" type="button"><span class="tool-icon" data-icon="refresh"></span><span>تحديث المستودعات</span></button>
       <button class="tool-link" id="sidebarSettings" type="button"><span class="tool-icon" data-icon="settings"></span><span>الإعدادات</span></button>
     </nav>
     <div class="sidebar-foot">

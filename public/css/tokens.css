@@ -35,9 +35,9 @@
   --amber-text: #f4d477;
 
   /* الخطوط */
-  --font-ui: "IBM Plex Sans", "Noto Sans Arabic", "Segoe UI", Tahoma, system-ui, sans-serif;
-  --font-display: "Space Grotesk", "Noto Sans Arabic", "Segoe UI", Tahoma, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-ui: "Noto Sans Arabic", "IBM Plex Sans", "Segoe UI", Tahoma, system-ui, sans-serif;
+  --font-display: "Space Grotesk", "Noto Sans Arabic", "IBM Plex Sans", sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* الشكل */
   --r-sm: 10px;

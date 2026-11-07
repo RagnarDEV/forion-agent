@@ -9,6 +9,8 @@ export function renderRepoButton() {
   const badge = $("repoVis");
 
   $("repoName").textContent = state.repo || "اختر مستودعًا";
+  const sidebarName = $("sidebarRepoName");
+  if (sidebarName) sidebarName.textContent = state.repo || "لم يتم الاختيار";
   badge.hidden = !repo;
 
   if (repo) {

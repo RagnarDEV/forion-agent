@@ -206,6 +206,11 @@ function open() {
   if (!dialog().open) dialog().showModal();
 }
 
+export function openSettings(tab = "general") {
+  activeTab = TABS.some(([key]) => key === tab) ? tab : "general";
+  open();
+}
+
 export function initSettings(handlers) {
   onLogout = handlers.onLogout;
 

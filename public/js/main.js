@@ -11,7 +11,7 @@ import {
   loadSavedToken, saveToken, forgetToken, normalizeToken
 } from "./prefs.js";
 import { applyLedger, applyStat, initRouterStore, routerPayload } from "./router-store.js";
-import { initSettings } from "./settings.js";
+import { initSettings, openSettings } from "./settings.js";
 import { initPwa } from "./pwa.js";
 
 // الحد الأقصى يأتي من الخادم (LIMITS.maxTaskChars)، وهذه قيمة احتياطية قبل الاتصال.
@@ -68,6 +68,12 @@ function closeMobileNav() {
   document.querySelector('.app').classList.remove('nav-open');
   const toggle = $("navToggle");
   if (toggle) toggle.setAttribute('aria-expanded', 'false');
+}
+
+function setSidebarActive(id) {
+  document.querySelectorAll('.tool-link').forEach(link => link.classList.remove('active'));
+  const item = $(id);
+  if (item) item.classList.add('active');
 }
 
 // تنبيه صريح عندما يكون الدمج التلقائي مفعّلًا حتى لا يُفاجَأ المستخدم.
@@ -346,15 +352,15 @@ function initEvents() {
   $("logout").addEventListener("click", logout);
 
   $("sidebarChat").addEventListener("click", () => {
-    document.querySelectorAll('.tool-link').forEach(link => link.classList.remove('active'));
-    $("sidebarChat").classList.add('active');
+    setSidebarActive("sidebarChat");
     $("task").focus();
     closeMobileNav();
   });
-  $("sidebarRepo").addEventListener("click", () => { openRepoPicker(); closeMobileNav(); });
+  $("sidebarRepo").addEventListener("click", () => { setSidebarActive("sidebarRepo"); openRepoPicker(); closeMobileNav(); });
   $("sidebarNewChat").addEventListener("click", () => { $("clear").click(); closeMobileNav(); });
-  $("sidebarSettings").addEventListener("click", () => { $("settingsBtn").click(); closeMobileNav(); });
-  $("sidebarSkills").addEventListener("click", () => { $("settingsBtn").click(); closeMobileNav(); });
+  $("sidebarRefresh").addEventListener("click", () => { $("refresh").click(); closeMobileNav(); });
+  $("sidebarSettings").addEventListener("click", () => { setSidebarActive("sidebarSettings"); openSettings("general"); closeMobileNav(); });
+  $("sidebarSkills").addEventListener("click", () => { setSidebarActive("sidebarSkills"); openSettings("skills"); closeMobileNav(); });
   $("sidebarLogout").addEventListener("click", logout);
   $("navToggle").addEventListener("click", () => {
     const app = document.querySelector('.app');
