@@ -2,6 +2,8 @@
 @keyframes fade { from { opacity: 0; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes slide { from { transform: translateX(-120%); } to { transform: translateX(320%); } }
+@keyframes sidebar-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes pulse { 0%, 100% { opacity: .55; transform: scale(.92); } 50% { opacity: 1; transform: scale(1); } }
 
 /* إيقاف الحركات عند إخفاء التبويب */
 html[data-paused] *,

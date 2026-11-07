@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0F172A">
+<meta name="theme-color" content="#0D0D0C">
 <meta name="description" content="Forion Agent — مساعد برمجي لتطوير مستودعات GitHub مع Pull Request للمراجعة">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="mobile-web-app-capable" content="yes">
@@ -31,6 +31,7 @@
 
 <div class="app">
   <header class="topbar">
+    <button class="btn btn-ghost icon-only nav-toggle" id="navToggle" type="button" aria-label="فتح القائمة الجانبية" aria-expanded="false"><span data-icon="layout"></span></button>
     <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
     <div class="brand">
       <h1>Forion Agent</h1>
@@ -45,9 +46,28 @@
     <button class="btn btn-ghost" id="logout" type="button" hidden><span data-icon="logout"></span><span>خروج</span></button>
   </header>
 
+  <aside class="sidebar" id="sidebar" aria-label="أدوات Forion Agent">
+    <div class="sidebar-label">مساحة العمل</div>
+    <nav class="tool-nav" aria-label="التنقل الرئيسي">
+      <button class="tool-link active" id="sidebarChat" type="button"><span class="tool-icon" data-icon="code"></span><span>المحادثة</span><kbd>⌘ 1</kbd></button>
+      <button class="tool-link" id="sidebarRepo" type="button"><span class="tool-icon" data-icon="folder"></span><span>المستودعات</span><kbd>⌘ 2</kbd></button>
+      <button class="tool-link" id="sidebarSkills" type="button"><span class="tool-icon" data-icon="zap"></span><span>المهارات</span><kbd>⌘ 3</kbd></button>
+    </nav>
+    <div class="sidebar-label sidebar-label-spaced">الأدوات</div>
+    <nav class="tool-nav" aria-label="أدوات التطبيق">
+      <button class="tool-link" id="sidebarNewChat" type="button"><span class="tool-icon" data-icon="plus"></span><span>محادثة جديدة</span></button>
+      <button class="tool-link" id="sidebarSettings" type="button"><span class="tool-icon" data-icon="settings"></span><span>الإعدادات</span></button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="status-card"><span class="status-pulse"></span><span><strong>Smart Auto</strong><small>التوجيه الذكي نشط</small></span></div>
+      <button class="tool-link logout-link" id="sidebarLogout" type="button"><span class="tool-icon" data-icon="logout"></span><span>تسجيل الخروج</span></button>
+    </div>
+  </aside>
+
   <main id="main" tabindex="-1">
     <section id="login" class="card login" aria-labelledby="loginTitle">
       <div class="spark" aria-hidden="true"><span data-icon="zap"></span></div>
+      <div class="eyebrow"><span class="eyebrow-line"></span> FORION / SECURE WORKSPACE</div>
       <h2 id="loginTitle" class="grad-text">ابدأ المحادثة</h2>
       <p class="sub">اتصل بمستودعاتك لتحليل الملفات وتطوير المشروع.</p>
 

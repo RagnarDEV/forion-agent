@@ -3,12 +3,12 @@
   color-scheme: dark;
 
   /* أسطح */
-  --bg: #0F172A;
-  --bg-deep: #020617;
-  --surface: #1B2336;
-  --surface-2: #232D45;
-  --muted: #272F42;
-  --input: #0B1222;
+  --bg: #0d0d0c;
+  --bg-deep: #050505;
+  --surface: #151514;
+  --surface-2: #1d1c1a;
+  --muted: #242320;
+  --input: #0a0a09;
 
   /* نصوص */
   --fg: #F8FAFC;
@@ -16,23 +16,23 @@
   --fg-muted: #94A3B8;
 
   /* خطوط */
-  --border: #334155;
-  --border-strong: #64748B;
+  --border: #302f2b;
+  --border-strong: #514e45;
 
   /* الهوية */
-  --primary: #7C3AED;
-  --primary-deep: #6D28D9;
-  --violet: #A78BFA;
-  --violet-soft: #C4B5FD;
-  --cyan: #22D3EE;
-  --teal: #0891B2;
+  --primary: #d4af37;
+  --primary-deep: #9a7417;
+  --violet: #f0cf67;
+  --violet-soft: #f7df8d;
+  --cyan: #e7c45c;
+  --teal: #8f6b19;
 
   /* حالات */
   --green: #22C55E;
   --green-text: #86EFAC;
   --red: #EF4444;
   --red-text: #FCA5A5;
-  --amber-text: #FCD34D;
+  --amber-text: #f4d477;
 
   /* الخطوط */
   --font-ui: "IBM Plex Sans", "Noto Sans Arabic", "Segoe UI", Tahoma, system-ui, sans-serif;
@@ -44,9 +44,9 @@
   --r-md: 14px;
   --r-lg: 20px;
   --r-pill: 999px;
-  --shadow-glow: 0 8px 22px -10px rgba(124, 58, 237, .9);
-  --shadow-card: 0 24px 60px -28px rgba(0, 0, 0, .8);
-  --ring: 0 0 0 3px rgba(167, 139, 250, .35);
+  --shadow-glow: 0 10px 28px -12px rgba(212, 175, 55, .52);
+  --shadow-card: 0 28px 70px -34px rgba(0, 0, 0, .9);
+  --ring: 0 0 0 3px rgba(212, 175, 55, .28);
 
   /* الحركة */
   --ease: cubic-bezier(.22, 1, .36, 1);

@@ -60,6 +60,16 @@ function showConnection(count) {
   $("connModel").textContent = pinned ? pinned.split("/").pop() + " (مثبّت)" : "Smart Auto";
 }
 
+function setWorkspaceMode(active) {
+  document.querySelector('.app').classList.toggle('workspace-active', active);
+}
+
+function closeMobileNav() {
+  document.querySelector('.app').classList.remove('nav-open');
+  const toggle = $("navToggle");
+  if (toggle) toggle.setAttribute('aria-expanded', 'false');
+}
+
 // تنبيه صريح عندما يكون الدمج التلقائي مفعّلًا حتى لا يُفاجَأ المستخدم.
 function renderMergeNote() {
   const note = $("mergeNote");
@@ -129,6 +139,7 @@ async function connect() {
 
     renderWelcome(setComposer);
     await swap($("login"), $("workspace"));
+    setWorkspaceMode(true);
     $("logout").hidden = false;
     $("settingsBtn").hidden = false;
     showConnection(count);
@@ -245,6 +256,8 @@ async function logout() {
   setBanner($("status"), "");
 
   await swap($("workspace"), $("login"));
+  setWorkspaceMode(false);
+  closeMobileNav();
   $("token").focus();
 }
 
@@ -331,6 +344,23 @@ function initEvents() {
   });
 
   $("logout").addEventListener("click", logout);
+
+  $("sidebarChat").addEventListener("click", () => {
+    document.querySelectorAll('.tool-link').forEach(link => link.classList.remove('active'));
+    $("sidebarChat").classList.add('active');
+    $("task").focus();
+    closeMobileNav();
+  });
+  $("sidebarRepo").addEventListener("click", () => { openRepoPicker(); closeMobileNav(); });
+  $("sidebarNewChat").addEventListener("click", () => { $("clear").click(); closeMobileNav(); });
+  $("sidebarSettings").addEventListener("click", () => { $("settingsBtn").click(); closeMobileNav(); });
+  $("sidebarSkills").addEventListener("click", () => { $("settingsBtn").click(); closeMobileNav(); });
+  $("sidebarLogout").addEventListener("click", logout);
+  $("navToggle").addEventListener("click", () => {
+    const app = document.querySelector('.app');
+    const open = app.classList.toggle('nav-open');
+    $("navToggle").setAttribute('aria-expanded', String(open));
+  });
 
   window.addEventListener("online", () => setOnline(true));
   window.addEventListener("offline", () => setOnline(false));

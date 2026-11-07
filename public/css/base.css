@@ -15,7 +15,7 @@ body {
 }
 
 [hidden] { display: none !important; }
-::selection { background: rgba(124, 58, 237, .45); color: #fff; }
+::selection { background: rgba(212, 175, 55, .35); color: #fff; }
 :focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
 * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 
@@ -53,15 +53,15 @@ body {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(60rem 36rem at 85% -10%, rgba(124, 58, 237, .28), transparent 60%),
-    radial-gradient(48rem 30rem at -10% 110%, rgba(34, 211, 238, .12), transparent 60%),
+    radial-gradient(52rem 32rem at 82% -12%, rgba(212, 175, 55, .13), transparent 60%),
+    radial-gradient(42rem 28rem at -10% 110%, rgba(143, 107, 25, .12), transparent 60%),
     linear-gradient(180deg, var(--bg), var(--bg-deep));
 }
 .bg-grid::after {
   content: "";
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(rgba(148, 163, 184, .14) 1px, transparent 1.2px);
+  background-image: radial-gradient(rgba(212, 175, 55, .11) 1px, transparent 1.2px);
   background-size: 26px 26px;
   -webkit-mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 72%);
   mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 72%);
@@ -69,11 +69,11 @@ body {
 
 /* التخطيط العام */
 .app {
-  max-width: 920px;
+  max-width: 1360px;
   height: 100vh;
   height: 100dvh;
   margin: 0 auto;
-  padding: var(--safe-top) 16px 0;
+  padding: var(--safe-top) 24px 0;
   display: flex;
   flex-direction: column;
 }
@@ -82,8 +82,8 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border);
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(212, 175, 55, .18);
 }
 
 .logo {
@@ -93,14 +93,16 @@ body {
   display: grid;
   place-items: center;
   border-radius: 14px;
-  background: linear-gradient(135deg, var(--primary-deep), var(--primary) 55%, var(--teal));
-  box-shadow: 0 8px 24px -8px rgba(124, 58, 237, .6);
+  background: linear-gradient(135deg, #8b6816, var(--primary) 55%, #f5da7b);
+  box-shadow: 0 8px 28px -8px rgba(212, 175, 55, .55);
 }
 .logo svg { width: 24px; height: 24px; }
 
 .brand { flex: 1; min-width: 0; }
 .brand h1 { margin: 0; font: 700 20px/1.2 var(--font-display); letter-spacing: -.01em; }
 .brand p { margin: 2px 0 0; font-size: 13px; color: var(--fg-muted); }
+
+.nav-toggle { display: none; }
 
 main { flex: 1; min-height: 0; display: flex; flex-direction: column; outline: none; }
 
@@ -109,7 +111,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; outline: n
 
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
   .grad-text {
-    background: linear-gradient(135deg, #F8FAFC 35%, var(--violet-soft));
+    background: linear-gradient(135deg, #fff 35%, var(--violet-soft));
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -123,6 +125,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; outline: n
   .brand h1 { font-size: 18px; }
 
   .topbar { gap: 8px; padding-inline: 8px 4px; }
+  .nav-toggle { display: inline-flex; }
   .logo { width: 40px; height: 40px; }
   .logo svg { width: 20px; height: 20px; }
   .brand p { display: none; }
