@@ -5,7 +5,8 @@ import { DEFAULT_MODEL } from "../config.js";
 
 export const GLM = "@cf/zai-org/glm-4.7-flash";
 export const GPT_OSS = "@cf/openai/gpt-oss-20b";
-export const CANDIDATE_IDS = Object.freeze([GLM, GPT_OSS]);
+export const GEMMA_26B = "@cf/google/gemma-4-26b-a4b-it";
+export const CANDIDATE_IDS = Object.freeze([GLM, GPT_OSS, GEMMA_26B]);
 
 export const MODEL_CATALOG = Object.freeze({
   [GLM]: Object.freeze({
@@ -33,6 +34,21 @@ export const MODEL_CATALOG = Object.freeze({
     // ولا نرسل reasoning أو chat_template_kwargs أو response_format.
     buildInput: ({ messages, maxTokens, caps }) =>
       caps && caps.acceptsMaxTokens === true ? { messages, max_tokens: maxTokens } : { messages }
+  }),
+
+  [GEMMA_26B]: Object.freeze({
+    id: GEMMA_26B,
+    label: "Gemma 4 26B A4B IT",
+    short: "Gemma4",
+    // الحدود: 9091 Neurons/1M لكل رمز مدخل، 27273 Neurons/1M للمخرج. Context 256000.
+    rates: Object.freeze({ inputPerM: 9091, outputPerM: 27273 }),
+    contextTokens: 256000,
+    // Gemma لا يتطلب معاملات خاصة بـ GLM أو GPT-OSS. اختبار التوافق سيحدد ما إذا كان يقبل max_tokens أو غيره.
+    buildInput: ({ messages, maxTokens, caps }) => {
+      // تجزئة Model IDs: استخدام GEMMA_26B للتحقق من التوافق، ثم استخدام القيمة الفعلية للتوجيه.
+      const capsKey = caps && caps.acceptsMaxTokens === true ? {} : { caps: { modelId: GEMMA_26B, acceptsMaxTokens: true } };
+      return { messages, ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}), ...capsKey };
+    }
   })
 });
 
