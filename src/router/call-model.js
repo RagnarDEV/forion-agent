@@ -1,5 +1,5 @@
 import { UserError } from "../lib/errors.js";
-import { extractResponseText } from "../lib/ai.js";
+import { describeResponseShape, extractResponseText } from "../lib/ai.js";
 import { ModelCallError, classifyAiError } from "./errors.js";
 import { extractUsage } from "./usage.js";
 
@@ -50,10 +50,8 @@ export async function callModel(env, info, { messages, maxTokens, timeoutMs, lab
   const text = extractResponseText(result);
 
   if (text === null) {
-    const keys = result && typeof result === "object" ? Object.keys(result).join(", ") : typeof result;
-
     throw new ModelCallError(
-      "لم يُرجع " + info.label + " نصًا صالحًا. مفاتيح الاستجابة: " + (keys || "لا توجد") + ".",
+      "لم يُرجع " + info.label + " نصًا صالحًا. بنية الاستجابة: " + describeResponseShape(result),
       "empty"
     );
   }

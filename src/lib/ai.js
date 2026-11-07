@@ -46,24 +46,45 @@ export function parseModelJSON(text, what = "التوليد") {
   }
 }
 
-// شكل Responses API (يستخدمه GPT-OSS على Workers AI): output = [{type:"reasoning"}, {type:"message", content:[{type:"output_text", text}]}]
-// نأخذ نصوص رسالة الإجابة فقط ونتجاهل عناصر الاستدلال.
-function fromResponsesOutput(output) {
+const TEXT_PART_TYPES = new Set(["text", "output_text", "input_text", "text_delta"]);
+
+const cleanText = value => typeof value === "string" && value.trim() ? value.trim() : null;
+
+function fromContent(content) {
+  const direct = cleanText(content);
+  if (direct) return direct;
+
+  if (Array.isArray(content)) {
+    const parts = content.map(part => {
+      if (typeof part === "string") return part;
+      if (!part || typeof part !== "object" || (part.type && !TEXT_PART_TYPES.has(part.type))) return "";
+      return typeof part.text === "string" ? part.text : "";
+    });
+    return cleanText(parts.join(""));
+  }
+
+  if (content && typeof content === "object" && (!content.type || TEXT_PART_TYPES.has(content.type))) {
+    return cleanText(content.text);
+  }
+
+  return null;
+}
+
+// Responses API: output = [{type:"reasoning"}, {type:"message", content:[{type:"output_text", text}]}].
+// نأخذ أجزاء الرسالة النصية فقط ونحافظ على ترتيبها، ونتجاهل reasoning والبيانات الوصفية.
+export function fromResponsesOutput(output) {
   if (!Array.isArray(output)) return null;
 
   const parts = [];
   for (const item of output) {
-    if (!item || item.type !== "message" || !Array.isArray(item.content)) continue;
-
-    for (const piece of item.content) {
-      if (piece && typeof piece.text === "string" && (!piece.type || piece.type === "output_text" || piece.type === "text")) {
-        parts.push(piece.text);
-      }
-    }
+    if (!item || typeof item !== "object") continue;
+    const text = item.type === "message"
+      ? fromContent(item.content)
+      : TEXT_PART_TYPES.has(item.type) ? cleanText(item.text) : null;
+    if (text) parts.push(text);
   }
 
-  const joined = parts.join("").trim();
-  return joined || null;
+  return cleanText(parts.join(""));
 }
 
 /**
@@ -71,37 +92,68 @@ function fromResponsesOutput(output) {
  * يُرجع null إن لم يجد نصًا بدل تمرير undefined إلى المراحل التالية.
  */
 export function extractResponseText(result) {
-  const candidates = [
-    result?.response,
-    result?.result?.response,
-    result?.output_text,
-    result?.choices?.[0]?.message?.content,
-    result?.choices?.[0]?.text,
-    result?.message?.content,
-    result?.content
-  ];
+  const seen = new WeakSet();
 
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim();
+  const visit = value => {
+    const direct = cleanText(value);
+    if (direct) return direct;
+    if (!value || typeof value !== "object") return null;
+    if (seen.has(value)) return null;
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      const parts = value.map(item => visit(item) || "");
+      return cleanText(parts.join(""));
     }
 
-    if (Array.isArray(candidate)) {
-      const joined = candidate
-        .map(part => typeof part === "string" ? part :
-          typeof part?.text === "string" ? part.text : "")
-        .join("");
+    const responseText = fromResponsesOutput(value.output);
+    if (responseText) return responseText;
 
-      if (joined.trim()) return joined.trim();
+    if (Array.isArray(value.choices)) {
+      for (const choice of value.choices) {
+        const text = fromContent(choice && choice.message ? choice.message.content : null) ||
+          fromContent(choice && choice.text);
+        if (text) return text;
+      }
     }
 
-    if (candidate && typeof candidate === "object" &&
-        typeof candidate.text === "string" && candidate.text.trim()) {
-      return candidate.text.trim();
+    for (const key of ["output_text", "response", "result", "message", "content", "text"]) {
+      if (!(key in value)) continue;
+      const text = key === "content" ? fromContent(value[key]) : visit(value[key]);
+      if (text) return text;
     }
+
+    return null;
+  };
+
+  return visit(result);
+}
+
+const typeOf = value => Array.isArray(value) ? "array" : value === null ? "null" : typeof value;
+const keysOf = value => value && typeof value === "object" && !Array.isArray(value)
+  ? Object.keys(value).slice(0, 20).join(",") || "∅"
+  : typeOf(value);
+
+// تشخيص بنيوي محدود: أسماء مفاتيح وأنواع فقط، بلا محتوى أو أسرار.
+export function describeResponseShape(result) {
+  if (!result || typeof result !== "object") return "type=" + typeOf(result);
+
+  const parts = ["type=" + typeOf(result), "keys=" + keysOf(result)];
+  const add = (label, value) => parts.push(label + "=" + typeOf(value) + (value && typeof value === "object" && !Array.isArray(value) ? "{" + keysOf(value) + "}" : ""));
+
+  add("response", result.response);
+  add("result", result.result);
+  add("choices", result.choices);
+  if (Array.isArray(result.choices) && result.choices[0]) {
+    add("choices[0]", result.choices[0]);
+    add("choices[0].message", result.choices[0].message);
+    add("choices[0].message.content", result.choices[0].message && result.choices[0].message.content);
+    const content = result.choices[0].message && result.choices[0].message.content;
+    if (Array.isArray(content)) parts.push("contentTypes=[" + content.map(item => typeOf(item) + (item && item.type ? ":" + item.type : "")).slice(0, 12).join(",") + "]");
   }
-
-  return fromResponsesOutput(result?.output) || fromResponsesOutput(result?.result?.output);
+  add("output", result.output);
+  add("output_text", result.output_text);
+  return parts.join("; ");
 }
 
 /**
@@ -143,13 +195,9 @@ export async function askAI(env, messages, maxTokens, timeoutMs, label) {
   const text = extractResponseText(result);
 
   if (text === null) {
-    const keys = result && typeof result === "object"
-      ? Object.keys(result).join(", ")
-      : typeof result;
-
     throw new UserError(
       "لم يُرجع Workers AI نصًا صالحًا. النموذج: " + model +
-      ". مفاتيح الاستجابة: " + (keys || "لا توجد") + "."
+      ". بنية الاستجابة: " + describeResponseShape(result)
     );
   }
 

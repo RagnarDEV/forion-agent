@@ -19,6 +19,8 @@ const near = (actual, expected, epsilon = 1e-6) =>
 test("extractUsage: شكلا chat وResponses، والمجهول", () => {
   assert.deepEqual(extractUsage({ usage: { prompt_tokens: 10, completion_tokens: 5 } }), { known: true, inputTokens: 10, outputTokens: 5 });
   assert.deepEqual(extractUsage({ usage: { input_tokens: 7, output_tokens: 3 } }), { known: true, inputTokens: 7, outputTokens: 3 });
+  assert.deepEqual(extractUsage({ response: { choices: [], usage: { prompt_tokens: 11, completion_tokens: 4 } } }), { known: true, inputTokens: 11, outputTokens: 4 });
+  assert.deepEqual(extractUsage({ result: { response: { usage: { input_tokens: 9, output_tokens: 2 } } } }), { known: true, inputTokens: 9, outputTokens: 2 });
   assert.equal(extractUsage({}).known, false);
   assert.equal(extractUsage({ usage: {} }).known, false);
   assert.equal(extractUsage(null).known, false);
@@ -84,6 +86,8 @@ test("classifyAiError: رموز Workers AI الموثقة", () => {
   assert.equal(classifyAiError(new Error("5035: This model requires a Workers Paid plan")), "paid");
   assert.equal(classifyAiError(new Error("3006: Request is too large")), "toolarge");
   assert.equal(classifyAiError(new Error("5007: No such model")), "unavailable");
+  assert.equal(classifyAiError(new Error("unexpected parameter: max_tokens")), "param");
+  assert.equal(classifyAiError(new Error("unsupported max_completion_tokens")), "param");
   assert.equal(classifyAiError(new Error("something else")), "error");
   assert.equal(classifyAiError({ kind: "capacity", message: "x" }), "capacity");
 });
@@ -364,6 +368,17 @@ test("normalizeRouterSettings وsanitizeProfile وbuildRouterContext", () => {
   assert.equal(profile.models[GPT_OSS].jsonOk, false);
   assert.equal(profile.models[GPT_OSS].secret, undefined);
   assert.equal(profile.models[GEMMA].outputLimitParam, "max_completion_tokens");
+
+  const stale = sanitizeProfile({ models: { [GEMMA]: { ok: true, jsonOk: true, at: "2020-01-01T00:00:00.000Z" } } });
+  assert.equal(stale.models[GEMMA], undefined);
+
+  const states = sanitizeProfile({ models: { [GEMMA]: {
+    ok: false, requestOk: true, textExtracted: false, jsonOk: false,
+    outputLimitSupported: false, outputLimitParam: "none", at: new Date().toISOString()
+  } } });
+  assert.equal(states.models[GEMMA].requestOk, true);
+  assert.equal(states.models[GEMMA].textExtracted, false);
+  assert.equal(states.models[GEMMA].outputLimitSupported, false);
 
   const invalid = sanitizeProfile({ models: { [GEMMA]: { outputLimitParam: "chat_template_kwargs" } } });
   assert.equal(invalid.models[GEMMA].outputLimitParam, "none");

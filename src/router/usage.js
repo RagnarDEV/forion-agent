@@ -9,7 +9,14 @@ export const byteLength = text => encoder.encode(String(text || "")).length;
 
 // يدعم شكلي الاستخدام: chat (prompt/completion_tokens) وResponses (input/output_tokens).
 export function extractUsage(result) {
-  const usage = result && typeof result === "object" ? result.usage || (result.result && result.result.usage) : null;
+  const seen = new WeakSet();
+  const findUsage = value => {
+    if (!value || typeof value !== "object" || seen.has(value)) return null;
+    seen.add(value);
+    if (value.usage && typeof value.usage === "object") return value.usage;
+    return findUsage(value.response) || findUsage(value.result);
+  };
+  const usage = findUsage(result);
 
   if (!usage || typeof usage !== "object") {
     return { known: false, inputTokens: 0, outputTokens: 0 };

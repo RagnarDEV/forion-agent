@@ -86,6 +86,34 @@ test("Gemma ينتقل إلى max_tokens ثم بدونه إذا رفض المع�
   assert.equal("max_tokens" in ai.calls[2].request, false);
 });
 
+test("فشل استخراج النص لا يُعامل كرفض لمعامل الإخراج ولا يعيد probe المحاولة", async () => {
+  const ai = modelAI(() => ({
+    id: "chatcmpl_x",
+    object: "chat.completion",
+    choices: [{ index: 0, finish_reason: "stop" }],
+    usage: { prompt_tokens: 2, completion_tokens: 1 }
+  }));
+  const report = await probeModels({ AI: ai }, { ids: [GEMMA] });
+  const gemma = report.models[GEMMA];
+
+  assert.equal(ai.calls.length, 1);
+  assert.equal(gemma.ok, false);
+  assert.equal(gemma.requestOk, false);
+  assert.equal(gemma.textExtracted, false);
+  assert.equal(gemma.outputLimitSupported, false);
+  assert.equal(gemma.outputLimitParam, "none");
+  assert.match(gemma.errors[0], /بنية الاستجابة/);
+});
+
+test("خطأ capacity لا يُعامل كرفض لمعامل الإخراج ولا يجرّب المعامل البديل", async () => {
+  const ai = modelAI(() => { throw new Error("3040: out of capacity"); });
+  const report = await probeModels({ AI: ai }, { ids: [GEMMA] });
+
+  assert.equal(ai.calls.length, 1);
+  assert.equal(report.models[GEMMA].outputLimitParam, "none");
+  assert.match(report.models[GEMMA].errors[0], /capacity|3040/i);
+});
+
 test("JSON غير صالح: يُسجَّل jsonOk=false ويُستبعد النموذج من التوجيه", async () => {
   const ai = modelAI(({ model, request }) => (model === GPT_OSS ? reply("not json") : good(request)));
   const report = await probeModels({ AI: ai }, {});

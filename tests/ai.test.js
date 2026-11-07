@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseModelJSON, askAI, withTimeout } from "../src/lib/ai.js";
+import { describeResponseShape, extractResponseText, fromResponsesOutput, parseModelJSON, askAI, withTimeout } from "../src/lib/ai.js";
 import { UserError } from "../src/lib/errors.js";
 
 test("parseModelJSON لا يعدّل محتوى الشيفرة داخل النصوص (HTML وأقواس < >)", () => {
@@ -43,6 +43,50 @@ test("askAI يستخرج النص من أشكال الاستجابة المخت�
   }
 
   assert.deepEqual(seen, ["a", "b", "c", "d"]);
+});
+
+test("extractResponseText يستخرج غلاف OpenAI المتداخل داخل response دون تسريب الغلاف", () => {
+  const body = { id: "chatcmpl_x", object: "chat.completion", choices: [{ message: { content: "النص الحقيقي" } }], usage: { prompt_tokens: 2 } };
+  assert.equal(extractResponseText({ response: body }), "النص الحقيقي");
+  assert.equal(extractResponseText({ result: { response: body } }), "النص الحقيقي");
+  assert.equal(extractResponseText(body), "النص الحقيقي");
+  assert.notEqual(extractResponseText(body), JSON.stringify(body));
+});
+
+test("extractResponseText يحافظ على ترتيب أجزاء المحتوى ويتجاهل reasoning", () => {
+  const chat = {
+    choices: [{ message: { content: [
+      { type: "reasoning", text: "لا تُضمّن" },
+      { type: "text", text: "أول" },
+      { type: "output_text", text: " وثانٍ" }
+    ] } }]
+  };
+  const responses = {
+    output: [
+      { type: "reasoning", content: [{ type: "reasoning_text", text: "لا تُضمّن" }] },
+      { type: "message", content: [{ type: "output_text", text: "أول" }, { type: "text", text: " وثانٍ" }] }
+    ]
+  };
+
+  assert.equal(extractResponseText(chat), "أول وثانٍ");
+  assert.equal(extractResponseText(responses), "أول وثانٍ");
+  assert.equal(fromResponsesOutput(responses.output), "أول وثانٍ");
+  assert.equal(extractResponseText({ output: [{ type: "output_text", text: "مباشر" }] }), "مباشر");
+});
+
+test("extractResponseText يدعم choices.text وoutput_text ويرفض أغلفة metadata الفارغة", () => {
+  assert.equal(extractResponseText({ choices: [{ text: "legacy" }] }), "legacy");
+  assert.equal(extractResponseText({ output_text: "output" }), "output");
+  assert.equal(extractResponseText({ id: "x", object: "chat.completion", choices: [{ index: 0, finish_reason: "stop" }], usage: {} }), null);
+  assert.equal(extractResponseText({ output: [{ type: "reasoning", text: "thinking" }] }), null);
+});
+
+test("describeResponseShape يعرض الأنواع والمفاتيح فقط دون محتوى الاستجابة", () => {
+  const shape = describeResponseShape({ id: "secret-id", choices: [{ message: { content: [{ type: "text", text: "SECRET" }] } }] });
+  assert.match(shape, /keys=id,choices/);
+  assert.match(shape, /choices=array/);
+  assert.match(shape, /contentTypes=\[object:text\]/);
+  assert.equal(shape.includes("SECRET"), false);
 });
 
 test("askAI يرفض الاستجابة بلا نص ويكشف مفاتيحها", async () => {

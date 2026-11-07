@@ -56,6 +56,9 @@ export function capabilityGate(modelId, stage, profile) {
   const caps = profile && profile.models ? profile.models[modelId] : null;
 
   if (!caps) return "لم يُختبر توافقه بعد (شغّل «اختبار التوافق» من الإعدادات)";
+  const requestOk = caps.requestOk === undefined ? caps.ok === true : caps.requestOk === true;
+  const textExtracted = caps.textExtracted === undefined ? caps.ok === true : caps.textExtracted === true;
+  if (!requestOk || !textExtracted) return "فشل استدعاء النموذج أو استخراج النص";
   if (caps.ok !== true || caps.jsonOk !== true) return "فشل اختبار التوافق أو إنتاج JSON";
   const outputLimitParam = caps.outputLimitParam || (caps.acceptsMaxTokens === true ? "max_tokens" : "none");
   if (OUTPUT_HEAVY.has(stage) && !["max_tokens", "max_completion_tokens"].includes(outputLimitParam)) {

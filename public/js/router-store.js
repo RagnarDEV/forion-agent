@@ -15,6 +15,7 @@ const REVIEW_MODES = ["off", "auto", "on"];
 const KEY_PATTERN = /^@cf\/[A-Za-z0-9_.\-/]{1,80}\|(explore|select|generate|repair|review)\|(question|bugfix|refactor|feature|docs|ci|edit)$/;
 const FIELDS = ["n", "ok", "fmt", "val", "to", "cap", "err", "lat", "neu", "nuse", "tokIn", "charsIn", "tokOut"];
 const OUTPUT_LIMIT_PARAMS = ["none", "max_tokens", "max_completion_tokens"];
+const PROFILE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const utcDay = () => new Date().toISOString().slice(0, 10);
 const safe = value => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0);
@@ -24,6 +25,11 @@ const bounded = (value, min, max, fallback) => {
 };
 
 const freshLedger = () => ({ day: utcDay(), neurons: 0, exhausted: false, approx: false });
+const freshAt = value => {
+  if (typeof value !== "string" || !value) return true;
+  const time = Date.parse(value);
+  return Number.isFinite(time) && Date.now() - time <= PROFILE_TTL_MS;
+};
 
 export function loadRouterSettings() {
   let raw = {};
@@ -59,9 +65,14 @@ export function loadRouterState() {
   const models = raw.profile && raw.profile.models && typeof raw.profile.models === "object" ? raw.profile.models : {};
   for (const [id, entry] of Object.entries(models).slice(0, 4)) {
     if (!/^@cf\//.test(id) || !entry || typeof entry !== "object") continue;
+    if (!freshAt(entry.at)) continue;
     profile.models[id] = {
       ok: entry.ok === true,
+      requestOk: entry.requestOk === true || entry.ok === true,
+      textExtracted: entry.textExtracted === true || entry.ok === true,
       jsonOk: entry.jsonOk === true,
+      encodingOk: entry.encodingOk === true,
+      outputLimitSupported: entry.outputLimitSupported === true || entry.acceptsMaxTokens === true || OUTPUT_LIMIT_PARAMS.slice(1).includes(entry.outputLimitParam),
       acceptsMaxTokens: entry.acceptsMaxTokens === true,
       outputLimitParam: OUTPUT_LIMIT_PARAMS.includes(entry.outputLimitParam)
         ? entry.outputLimitParam
@@ -121,7 +132,11 @@ export function applyProfile(report) {
   for (const [id, result] of Object.entries(report.models)) {
     state.router.profile.models[id] = {
       ok: result.ok === true,
+      requestOk: result.requestOk === true || result.ok === true,
+      textExtracted: result.textExtracted === true || result.ok === true,
       jsonOk: result.jsonOk === true,
+      encodingOk: result.encodingOk === true,
+      outputLimitSupported: result.outputLimitSupported === true || result.acceptsMaxTokens === true || OUTPUT_LIMIT_PARAMS.slice(1).includes(result.outputLimitParam),
       acceptsMaxTokens: result.acceptsMaxTokens === true,
       outputLimitParam: OUTPUT_LIMIT_PARAMS.includes(result.outputLimitParam)
         ? result.outputLimitParam

@@ -60,24 +60,47 @@ async function probeOne(env, id, ledger) {
   const info = modelInfo(id);
   const at = new Date().toISOString();
   const totals = { latency: [], neurons: 0, usageKnown: true };
-  const result = { ok: false, jsonOk: false, acceptsMaxTokens: false, outputLimitParam: "none", latencyMs: 0, neurons: 0, usageKnown: true, errors: [], at };
+  const result = {
+    ok: false,
+    requestOk: false,
+    textExtracted: false,
+    jsonOk: false,
+    encodingOk: false,
+    outputLimitSupported: false,
+    acceptsMaxTokens: false,
+    outputLimitParam: "none",
+    latencyMs: 0,
+    neurons: 0,
+    usageKnown: true,
+    errors: [],
+    at
+  };
 
   // 1) استدعاء أساسي بمعاملات تحديد المخرجات بالترتيب الموثق للنموذج.
   let basic = null;
+  let outputParamRejected = false;
+  let onlyParamRejections = true;
   for (const param of outputParams(info)) {
     try {
       basic = await attempt(env, info, BASIC, { outputLimitParam: param, acceptsMaxTokens: param === "max_tokens" }, ledger, totals);
       result.outputLimitParam = param;
       result.acceptsMaxTokens = param === "max_tokens";
+      result.outputLimitSupported = true;
       break;
     } catch (error) {
       if (error.kind === "quota") throw error;
+      if (error.kind !== "param") {
+        onlyParamRejections = false;
+        result.errors.push("مع " + param + ": " + short(error));
+        break;
+      }
+      outputParamRejected = true;
       result.errors.push("مع " + param + ": " + short(error));
     }
   }
 
-  // 2) إن رُفضت المعاملات الموثقة نجرّب الرسائل بدونه.
-  if (!basic) {
+  // 2) نستخدم الرسائل بدونهما فقط بعد رفض صريح لكل معاملات الإخراج، لا بعد فشل استخراج النص أو الخدمة.
+  if (!basic && outputParamRejected && onlyParamRejections) {
     try {
       basic = await attempt(env, info, BASIC, null, ledger, totals);
     } catch (error) {
@@ -89,6 +112,8 @@ async function probeOne(env, id, ledger) {
   if (!basic) return finish(result, totals);
 
   result.ok = true;
+  result.requestOk = true;
+  result.textExtracted = true;
 
   let basicJson = false;
   try {
@@ -114,6 +139,7 @@ async function probeOne(env, id, ledger) {
   }
 
   result.jsonOk = basicJson && strictJson;
+  result.encodingOk = strictJson;
   return finish(result, totals);
 }
 

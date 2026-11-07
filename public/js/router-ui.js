@@ -100,7 +100,12 @@ function modelStatus(id) {
     const param = profile.outputLimitParam || (profile.acceptsMaxTokens ? "max_tokens" : "none");
     return "✓ اجتاز الاختبار" + (param === "none" ? " · بلا معامل إخراج (لا يصلح للمخرجات الطويلة)" : " · يقبل " + param);
   }
-  return "✗ " + (profile.ok ? "JSON غير صارم" : "فشل الاستدعاء");
+  const requestOk = profile.requestOk === undefined ? profile.ok : profile.requestOk;
+  const textExtracted = profile.textExtracted === undefined ? profile.ok : profile.textExtracted;
+  if (!requestOk && !profile.ok) return "✗ فشل الاستدعاء";
+  if (!textExtracted) return "✗ فشل استخراج النص";
+  if (!profile.jsonOk) return "✗ JSON غير صارم";
+  return "✗ فشل اختبار التوافق";
 }
 
 async function runProbe() {

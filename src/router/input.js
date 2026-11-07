@@ -7,12 +7,19 @@ import { sanitizeStats } from "./stats.js";
 
 const REVIEW_MODES = ["off", "auto", "on"];
 const OUTPUT_LIMIT_PARAMS = ["none", "max_tokens", "max_completion_tokens"];
+export const PROFILE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const obj = value => (value && typeof value === "object" && !Array.isArray(value) ? value : {});
 const flag = (value, fallback) => (typeof value === "boolean" ? value : fallback);
 const bounded = (value, min, max, fallback) => {
   const number = Number(value);
   return Number.isFinite(number) ? Math.min(max, Math.max(min, Math.round(number))) : fallback;
+};
+
+const freshAt = value => {
+  if (typeof value !== "string" || !value) return true; // ملفات قديمة بلا وقت تبقى متوافقة للخلفية، ولا تُمدد صلاحيتها.
+  const time = Date.parse(value);
+  return Number.isFinite(time) && Date.now() - time <= PROFILE_TTL_MS;
 };
 
 export function normalizeRouterSettings(raw) {
@@ -35,10 +42,15 @@ export function sanitizeProfile(raw) {
   for (const id of CANDIDATE_IDS) {
     const entry = obj(models[id]);
     if (!Object.keys(entry).length) continue;
+    if (!freshAt(entry.at)) continue;
 
     profile.models[id] = {
       ok: entry.ok === true,
+      requestOk: entry.requestOk === true || entry.ok === true,
+      textExtracted: entry.textExtracted === true || entry.ok === true,
       jsonOk: entry.jsonOk === true,
+      encodingOk: entry.encodingOk === true,
+      outputLimitSupported: entry.outputLimitSupported === true || entry.acceptsMaxTokens === true || OUTPUT_LIMIT_PARAMS.slice(1).includes(entry.outputLimitParam),
       acceptsMaxTokens: entry.acceptsMaxTokens === true,
       outputLimitParam: OUTPUT_LIMIT_PARAMS.includes(entry.outputLimitParam)
         ? entry.outputLimitParam

@@ -8,6 +8,7 @@ import { UserError } from "../lib/errors.js";
 //   unavailable لا يوجد النموذج (5007/3042)
 //   toolarge    الطلب أكبر من المسموح (3006)
 //   empty       استجابة بلا نص
+//   param       رفض صريح لمعامل تحديد المخرجات
 //   error       غير ذلك
 export class ModelCallError extends UserError {
   constructor(message, kind = "error", code = 0) {
@@ -28,6 +29,7 @@ export class QuotaExhaustedError extends ModelCallError {
 }
 
 const CODES = /\b(3036|3040|3007|3008|3006|5035|5007|3042)\b/;
+const OUTPUT_PARAM_REJECTION = /(?:max_tokens|max_completion_tokens).*(?:unsupported|not supported|unknown|unrecognized|invalid|unexpected|not allowed|additional propert)|(?:unsupported|not supported|unknown|unrecognized|invalid|unexpected|not allowed|additional propert).*(?:max_tokens|max_completion_tokens)/i;
 
 // يصنّف خطأ env.AI.run حسب رموز الأخطاء الموثقة في وثائق Workers AI (صفحة Errors).
 export function classifyAiError(error) {
@@ -36,6 +38,8 @@ export function classifyAiError(error) {
   const text = String((error && error.message) || error || "");
   const match = text.match(CODES);
   const code = Number((error && error.code) || (match && match[1]) || 0);
+
+  if (OUTPUT_PARAM_REJECTION.test(text)) return "param";
 
   if (code === 3036 || /daily free allocation|used up your daily/i.test(text)) return "quota";
   if (code === 5035 || /requires a Workers Paid plan/i.test(text)) return "paid";
