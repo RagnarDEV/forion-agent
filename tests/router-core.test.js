@@ -51,9 +51,10 @@ test("Gemma 4 موجود ببيانات Cloudflare الرسمية وحساب Neu
   assert.deepEqual(MODEL_CATALOG[GEMMA].rates, { inputPerM: 9091, outputPerM: 27273 });
   assert.equal(neuronsFor(MODEL_CATALOG[GEMMA], { known: true, inputTokens: 1e6, outputTokens: 0 }), 9091);
   assert.equal(neuronsFor(MODEL_CATALOG[GEMMA], { known: true, inputTokens: 0, outputTokens: 1e6 }), 27273);
-  assert.deepEqual(MODEL_CATALOG[GEMMA].buildInput({ messages: [{ role: "user", content: "x" }], maxTokens: 5 }), { messages: [{ role: "user", content: "x" }] });
-  assert.deepEqual(MODEL_CATALOG[GEMMA].buildInput({ messages: [], maxTokens: 5, caps: { outputLimitParam: "max_completion_tokens" } }), { messages: [], max_completion_tokens: 5 });
-  assert.deepEqual(MODEL_CATALOG[GEMMA].buildInput({ messages: [], maxTokens: 5, caps: { outputLimitParam: "max_tokens" } }), { messages: [], max_tokens: 5 });
+  const thinkingOff = { chat_template_kwargs: { enable_thinking: false } };
+  assert.deepEqual(MODEL_CATALOG[GEMMA].buildInput({ messages: [{ role: "user", content: "x" }], maxTokens: 5 }), { messages: [{ role: "user", content: "x" }], ...thinkingOff });
+  assert.deepEqual(MODEL_CATALOG[GEMMA].buildInput({ messages: [], maxTokens: 5, caps: { outputLimitParam: "max_completion_tokens" } }), { messages: [], ...thinkingOff, max_completion_tokens: 5 });
+  assert.deepEqual(MODEL_CATALOG[GEMMA].buildInput({ messages: [], maxTokens: 5, caps: { outputLimitParam: "max_tokens" } }), { messages: [], ...thinkingOff, max_tokens: 5 });
 });
 
 test("upperBoundNeurons: حد أعلى رياضي من البايتات ولا يتجاوز max_tokens", () => {
@@ -94,7 +95,7 @@ test("classifyAiError: رموز Workers AI الموثقة", () => {
 
 // ───────── الكتالوج ─────────
 
-test("GLM يحتفظ بمعاملاته الحالية، وGPT-OSS لا يُمرَّر له ما لا يدعمه", () => {
+test("GLM يحتفظ بمعاملاته الحالية، وGPT-OSS لا يُمرَّر له ما لا يدعمه، وGemma يعطّل thinking", () => {
   const messages = [{ role: "user", content: "x" }];
 
   assert.deepEqual(MODEL_CATALOG[GLM].buildInput({ messages, maxTokens: 5 }), {
@@ -106,6 +107,11 @@ test("GLM يحتفظ بمعاملاته الحالية، وGPT-OSS لا يُمر
 
   assert.deepEqual(MODEL_CATALOG[GPT_OSS].buildInput({ messages, maxTokens: 5 }), { messages });
   assert.deepEqual(MODEL_CATALOG[GPT_OSS].buildInput({ messages, maxTokens: 5, caps: { acceptsMaxTokens: true } }), { messages, max_tokens: 5 });
+  assert.deepEqual(MODEL_CATALOG[GEMMA].buildInput({ messages, maxTokens: 5, caps: { outputLimitParam: "max_completion_tokens" } }), {
+    messages,
+    chat_template_kwargs: { enable_thinking: false },
+    max_completion_tokens: 5
+  });
 
   for (const input of [
     MODEL_CATALOG[GPT_OSS].buildInput({ messages, maxTokens: 5, caps: { acceptsMaxTokens: true } }),

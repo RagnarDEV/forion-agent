@@ -46,15 +46,17 @@ export const MODEL_CATALOG = Object.freeze({
     contextTokens: 256000,
     probeOutputParams: Object.freeze(["max_completion_tokens", "max_tokens"]),
     capabilities: Object.freeze({ functionCalling: true, reasoning: true, vision: true }),
-    // لا يُرسل حد المخرجات قبل أن يثبت اختبار التوافق المعامل الذي يقبله Workers AI.
+    // Gemma 4 قد يعيد reasoning_content مع content فارغ عند تفعيل التفكير؛ نطلب الإجابة النهائية فقط.
+    // هذا المعامل خاص بـ Gemma ولا يُنقل إلى GPT-OSS.
     buildInput: ({ messages, maxTokens, caps }) => {
+      const input = { messages, chat_template_kwargs: { enable_thinking: false } };
       if (caps && caps.outputLimitParam === "max_completion_tokens") {
-        return { messages, max_completion_tokens: maxTokens };
+        return { ...input, max_completion_tokens: maxTokens };
       }
       if (caps && caps.outputLimitParam === "max_tokens") {
-        return { messages, max_tokens: maxTokens };
+        return { ...input, max_tokens: maxTokens };
       }
-      return { messages };
+      return input;
     }
   })
 });
