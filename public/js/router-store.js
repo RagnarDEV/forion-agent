@@ -26,7 +26,7 @@ const bounded = (value, min, max, fallback) => {
 
 const freshLedger = () => ({ day: utcDay(), neurons: 0, exhausted: false, approx: false });
 const freshAt = value => {
-  if (typeof value !== "string" || !value) return true;
+  if (typeof value !== "string" || !value) return false;
   const time = Date.parse(value);
   return Number.isFinite(time) && Date.now() - time <= PROFILE_TTL_MS;
 };

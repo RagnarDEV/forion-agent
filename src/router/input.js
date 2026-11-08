@@ -17,7 +17,7 @@ const bounded = (value, min, max, fallback) => {
 };
 
 const freshAt = value => {
-  if (typeof value !== "string" || !value) return true; // ملفات قديمة بلا وقت تبقى متوافقة للخلفية، ولا تُمدد صلاحيتها.
+  if (typeof value !== "string" || !value) return false;
   const time = Date.parse(value);
   return Number.isFinite(time) && Date.now() - time <= PROFILE_TTL_MS;
 };

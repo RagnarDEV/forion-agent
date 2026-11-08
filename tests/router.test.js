@@ -31,7 +31,7 @@ const call = (router, stage = "generate", extra = {}) =>
 test("Gemma يدخل Smart Auto فقط بعد نجاح JSON ومعامل الإخراج", async () => {
   const { ai, router } = setup({
     handler: ({ model }) => model === GLM ? (() => { throw new Error(CAPACITY_ERROR); })() : reply("{}"),
-    router: { profile: { models: { [GEMMA]: { ok: true, jsonOk: true, outputLimitParam: "max_completion_tokens" } } } }
+    router: { profile: { models: { [GEMMA]: { ok: true, jsonOk: true, outputLimitParam: "max_completion_tokens", at: new Date().toISOString() } } } }
   });
 
   const answer = await call(router, "explore");

@@ -359,8 +359,8 @@ test("normalizeRouterSettings وsanitizeProfile وbuildRouterContext", () => {
 
   const profile = sanitizeProfile({
     models: {
-      [GPT_OSS]: { ok: true, jsonOk: "yes", acceptsMaxTokens: true, latencyMs: 5, secret: "x" },
-      [GEMMA]: { ok: true, jsonOk: true, outputLimitParam: "max_completion_tokens", latencyMs: 6 },
+      [GPT_OSS]: { ok: true, jsonOk: "yes", acceptsMaxTokens: true, latencyMs: 5, at: new Date().toISOString(), secret: "x" },
+      [GEMMA]: { ok: true, jsonOk: true, outputLimitParam: "max_completion_tokens", latencyMs: 6, at: new Date().toISOString() },
       "@cf/evil/model": { ok: true }
     }
   });
@@ -381,7 +381,7 @@ test("normalizeRouterSettings وsanitizeProfile وbuildRouterContext", () => {
   assert.equal(states.models[GEMMA].outputLimitSupported, false);
 
   const invalid = sanitizeProfile({ models: { [GEMMA]: { outputLimitParam: "chat_template_kwargs" } } });
-  assert.equal(invalid.models[GEMMA].outputLimitParam, "none");
+  assert.equal(invalid.models[GEMMA], undefined);
 
   const context = buildRouterContext({ ledger: { day: "2020-01-01", neurons: 9999, exhausted: true } }, NOW);
   assert.equal(context.ledger.neurons, 0);
