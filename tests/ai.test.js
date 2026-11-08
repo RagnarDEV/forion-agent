@@ -77,6 +77,8 @@ test("extractResponseText يحافظ على ترتيب أجزاء المحتوى
 test("extractResponseText يدعم choices.text وoutput_text ويرفض أغلفة metadata الفارغة", () => {
   assert.equal(extractResponseText({ choices: [{ text: "legacy" }] }), "legacy");
   assert.equal(extractResponseText({ output_text: "output" }), "output");
+  assert.equal(extractResponseText({ id: "gemma", object: "chat.completion", choices: [{ index: 0, message: { role: "assistant", content: "{\"ok\":true}" }, finish_reason: "stop" }] }), "{\"ok\":true}");
+  assert.equal(extractResponseText({ choices: [{ message: { content: null, reasoning_content: "internal reasoning" } }] }), null);
   assert.equal(extractResponseText({ id: "x", object: "chat.completion", choices: [{ index: 0, finish_reason: "stop" }], usage: {} }), null);
   assert.equal(extractResponseText({ output: [{ type: "reasoning", text: "thinking" }] }), null);
 });

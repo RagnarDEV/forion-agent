@@ -31,7 +31,7 @@ const STRICT = [
   }
 ];
 
-const short = error => String((error && error.message) || error).replace(/\s+/g, " ").slice(0, 180);
+const short = error => String((error && error.message) || error).replace(/\s+/g, " ").slice(0, 520);
 
 async function attempt(env, info, messages, caps, ledger, totals) {
   if (ledger) {
@@ -120,7 +120,10 @@ async function probeOne(env, id, ledger) {
     const parsed = parseModelJSON(basic.text, "الاختبار الأساسي");
     basicJson = Boolean(parsed && parsed.ok === true && parsed.n === 7);
     result.basicJsonOk = basicJson;
-    if (!basicJson) result.errors.push("JSON الأساسي لا يطابق المتوقع.");
+    if (!basicJson) {
+      result.errors.push("JSON الأساسي لا يطابق المتوقع (ok=" + (parsed && parsed.ok === true ? "صحيح" : "خطأ") +
+        "، n=" + (parsed && typeof parsed.n === "number" ? String(parsed.n) : typeof (parsed && parsed.n)) + ").");
+    }
   } catch (error) {
     result.errors.push("JSON الأساسي: " + short(error));
   }
@@ -133,7 +136,15 @@ async function probeOne(env, id, ledger) {
       : { outputLimitParam: result.outputLimitParam, acceptsMaxTokens: result.acceptsMaxTokens }, ledger, totals);
     const parsed = parseModelJSON(strict.text, "اختبار الترميز");
     strictJson = Boolean(parsed && parsed.text === "مرحبا" && parsed.code === EXPECTED_CODE);
-    if (!strictJson) result.errors.push("اختبار الترميز: القيم المفككة لا تطابق المتوقع (الاقتباس/السطر الجديد/العربية).");
+    if (!strictJson) {
+      const code = parsed && typeof parsed.code === "string" ? parsed.code : "";
+      result.errors.push("اختبار الترميز: المؤشرات " + [
+        parsed && parsed.text === "مرحبا" ? "العربية-صحيحة" : "العربية-فاشلة",
+        typeof (parsed && parsed.code) === "string" ? "code-string" : "code-type-فاشل",
+        code.includes('"') ? "الاقتباس-صحيح" : "الاقتباس-فاشل",
+        code.includes("\n") ? "السطر-الجديد-صحيح" : "السطر-الجديد-فاشل"
+      ].join("، ") + ".");
+    }
   } catch (error) {
     if (error.kind === "quota") throw error;
     result.errors.push("اختبار الترميز: " + short(error));

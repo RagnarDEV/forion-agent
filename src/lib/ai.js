@@ -148,6 +148,9 @@ export function describeResponseShape(result) {
     add("choices[0]", result.choices[0]);
     add("choices[0].message", result.choices[0].message);
     add("choices[0].message.content", result.choices[0].message && result.choices[0].message.content);
+    add("choices[0].message.reasoning_content", result.choices[0].message && result.choices[0].message.reasoning_content);
+    add("choices[0].delta", result.choices[0].delta);
+    add("choices[0].text", result.choices[0].text);
     const content = result.choices[0].message && result.choices[0].message.content;
     if (Array.isArray(content)) parts.push("contentTypes=[" + content.map(item => typeOf(item) + (item && item.type ? ":" + item.type : "")).slice(0, 12).join(",") + "]");
   }
