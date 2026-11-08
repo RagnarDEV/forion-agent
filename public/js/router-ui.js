@@ -93,19 +93,22 @@ const profileOf = id => state.router.profile.models[id];
 function modelStatus(id) {
   const profile = profileOf(id);
   if (id === (catalog() && catalog().baseline)) {
-    return profile ? (profile.ok && profile.jsonOk ? "✓ الأساسي · اجتاز الاختبار" : "الأساسي · نتيجة الاختبار: " + (profile.ok ? "JSON غير صارم" : "فشل")) : "الأساسي (معتمد)";
+    if (!profile) return "الأساسي (معتمد)";
   }
   if (!profile) return "غير مختبَر — لن يُستخدم";
-  if (profile.ok && profile.jsonOk) {
-    const param = profile.outputLimitParam || (profile.acceptsMaxTokens ? "max_tokens" : "none");
-    return "✓ اجتاز الاختبار" + (param === "none" ? " · بلا معامل إخراج (لا يصلح للمخرجات الطويلة)" : " · يقبل " + param);
-  }
   const requestOk = profile.requestOk === undefined ? profile.ok : profile.requestOk;
   const textExtracted = profile.textExtracted === undefined ? profile.ok : profile.textExtracted;
-  if (!requestOk && !profile.ok) return "✗ فشل الاستدعاء";
-  if (!textExtracted) return "✗ فشل استخراج النص";
-  if (!profile.jsonOk) return "✗ JSON غير صارم";
-  return "✗ فشل اختبار التوافق";
+  const basicJsonOk = profile.basicJsonOk === undefined ? profile.jsonOk : profile.basicJsonOk;
+  const encodingOk = profile.encodingOk === undefined ? profile.jsonOk : profile.encodingOk;
+  const param = profile.outputLimitParam || (profile.acceptsMaxTokens ? "max_tokens" : "none");
+
+  if (!requestOk) return "✗ الاستدعاء فشل";
+  if (!textExtracted) return "✗ استخراج النص فشل";
+  if (!basicJsonOk) return "✗ JSON الأساسي فشل";
+  if (!encodingOk) return "✗ اختبار الترميز فشل";
+
+  return "✓ الاستدعاء ناجح · ✓ استخراج النص ناجح · ✓ JSON الأساسي ناجح · ✓ الترميز ناجح" +
+    (param === "none" ? " · بلا معامل إخراج (لا يصلح للمخرجات الطويلة)" : " · يقبل " + param);
 }
 
 async function runProbe() {

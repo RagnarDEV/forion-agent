@@ -64,6 +64,7 @@ async function probeOne(env, id, ledger) {
     ok: false,
     requestOk: false,
     textExtracted: false,
+    basicJsonOk: false,
     jsonOk: false,
     encodingOk: false,
     outputLimitSupported: false,
@@ -111,7 +112,6 @@ async function probeOne(env, id, ledger) {
 
   if (!basic) return finish(result, totals);
 
-  result.ok = true;
   result.requestOk = true;
   result.textExtracted = true;
 
@@ -119,6 +119,7 @@ async function probeOne(env, id, ledger) {
   try {
     const parsed = parseModelJSON(basic.text, "الاختبار الأساسي");
     basicJson = Boolean(parsed && parsed.ok === true && parsed.n === 7);
+    result.basicJsonOk = basicJson;
     if (!basicJson) result.errors.push("JSON الأساسي لا يطابق المتوقع.");
   } catch (error) {
     result.errors.push("JSON الأساسي: " + short(error));
@@ -140,6 +141,7 @@ async function probeOne(env, id, ledger) {
 
   result.jsonOk = basicJson && strictJson;
   result.encodingOk = strictJson;
+  result.ok = result.requestOk && result.textExtracted && result.jsonOk;
   return finish(result, totals);
 }
 

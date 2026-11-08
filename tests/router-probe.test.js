@@ -119,7 +119,10 @@ test("JSON غير صالح: يُسجَّل jsonOk=false ويُستبعد الن�
   const report = await probeModels({ AI: ai }, {});
   const oss = report.models[GPT_OSS];
 
-  assert.equal(oss.ok, true);
+  assert.equal(oss.ok, false);
+  assert.equal(oss.requestOk, true);
+  assert.equal(oss.textExtracted, true);
+  assert.equal(oss.basicJsonOk, false);
   assert.equal(oss.jsonOk, false);
   assert.ok(oss.errors.some(text => /JSON الأساسي/.test(text)));
   assert.equal(report.models[GLM].jsonOk, true);

@@ -48,6 +48,7 @@ export function sanitizeProfile(raw) {
       ok: entry.ok === true,
       requestOk: entry.requestOk === true || entry.ok === true,
       textExtracted: entry.textExtracted === true || entry.ok === true,
+      basicJsonOk: entry.basicJsonOk === true || (entry.jsonOk === true && entry.encodingOk !== false),
       jsonOk: entry.jsonOk === true,
       encodingOk: entry.encodingOk === true,
       outputLimitSupported: entry.outputLimitSupported === true || entry.acceptsMaxTokens === true || OUTPUT_LIMIT_PARAMS.slice(1).includes(entry.outputLimitParam),
