@@ -222,7 +222,7 @@ function statsCard() {
 function draw() {
   if (!root) return;
 
-  const pinned = catalog() && catalog().pinned;
+  const pinned = (catalog() && catalog().pinned) || "";
 
   root.replaceChildren(
     h("p", { class: "sub", text: "Smart Auto: يحلل الوكيل مهمتك ويختار النموذج الأنسب لكل مرحلة (الاستكشاف، تحليل الملفات، التوليد، إصلاح CI، المراجعة)، وينتقل إلى النموذج الآخر عند الفشل ضمن حدود، ويتعلم من النتائج المتحقق منها. ضمن الحصة المجانية فقط." }),
