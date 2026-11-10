@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "db:migrate:local": "wrangler d1 migrations apply forion-agent-db --local",
+    "db:migrate": "wrangler d1 migrations apply forion-agent-db --remote"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
